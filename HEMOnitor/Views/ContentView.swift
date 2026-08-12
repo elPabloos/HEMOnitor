@@ -10,7 +10,10 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var viewModel: FactorTrackerViewModel
     @State private var showingCalibration = false
-    
+
+    // Doza introdusă de utilizator, în UI (unități internaționale)
+    @State private var doseText: String = ""
+
     // Simulare timp (doar cu butoane)
     @State private var simulatedOffsetHours: Double = 0
     
@@ -53,25 +56,40 @@ struct ContentView: View {
                 }
                 .padding()
                 
-                // Butoane rapide (fără reset aici)
-                HStack(spacing: 12) {
-                    Button("Injecție 3000 UI (test)") {
-                        viewModel.addInjection(doseIU: 3000)
-                        simulatedOffsetHours = 0
+                // Introducere doză + butoane rapide (fără reset aici)
+                VStack(spacing: 8) {
+                    HStack(spacing: 12) {
+                        TextField("Doză (UI)", text: $doseText)
+                            .keyboardType(.decimalPad)
+                            .textFieldStyle(.roundedBorder)
+
+                        Button("Adaugă injecție") {
+                            addInjectionFromInput()
+                        }
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 12)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(10)
+                        .disabled(parsedDoseIU == nil)
                     }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 12)
-                    .background(Color.blue.opacity(0.1))
-                    .cornerRadius(10)
-                    
+
+                    if let doseValidationMessage {
+                        Text(doseValidationMessage)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
                     Button("Calibrare după analize") {
                         showingCalibration = true
                     }
                     .padding(.vertical, 8)
                     .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity)
                     .background(Color.green.opacity(0.1))
                     .cornerRadius(10)
                 }
+                .padding(.horizontal)
                 
                 // Istoric injecții - full-width, fără fundal List
                 if !viewModel.injections.isEmpty {
@@ -152,6 +170,33 @@ struct ContentView: View {
         }
     }
     
+    // MARK: - Doză introdusă de utilizator
+
+    /// Doza validată din câmpul de text, sau nil dacă intrarea nu e utilizabilă.
+    /// Parsing tolerant la virgulă, ca în CalibrationView.
+    private var parsedDoseIU: Double? {
+        let normalized = doseText
+            .replacingOccurrences(of: ",", with: ".")
+            .trimmingCharacters(in: .whitespaces)
+        guard let dose = Double(normalized), dose.isFinite, dose > 0 else {
+            return nil
+        }
+        return dose
+    }
+
+    /// Mesaj afișat doar când utilizatorul a scris ceva, dar doza nu e validă.
+    private var doseValidationMessage: String? {
+        guard !doseText.isEmpty, parsedDoseIU == nil else { return nil }
+        return "Introdu o doză validă, mai mare decât 0."
+    }
+
+    private func addInjectionFromInput() {
+        guard let dose = parsedDoseIU else { return }
+        viewModel.addInjection(doseIU: dose)
+        simulatedOffsetHours = 0
+        doseText = ""
+    }
+
     // MARK: - Simulare UI (simplă)
     private var simulationSection: some View {
         VStack(spacing: 10) {
