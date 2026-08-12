@@ -14,20 +14,22 @@ Xcode project, no dependency manager (no `Package.swift`, `Podfile`, or `Fastfil
 # Build the app
 xcodebuild -scheme HEMOnitor -destination 'generic/platform=iOS Simulator' build
 
-# Run tests (see the two blockers below first)
-xcodebuild -scheme HEMOnitor -destination 'platform=iOS Simulator,name=<device>' test
+# Run tests (verified green on an iOS 26.5 simulator)
+xcodebuild -scheme HEMOnitor -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 
 # Narrow the run: one bundle, or one Swift Testing test
 xcodebuild ... -only-testing:HEMOnitorTests test
 xcodebuild ... -only-testing:HEMOnitorTests/HEMOnitorTests/example() test
 ```
 
-Two blockers were confirmed on this machine; re-check them before reporting that tests pass:
+Building and testing both work on this machine as of 2026-08-12; the two blockers previously recorded here are resolved. `xcodebuild ... test` against an iOS 26.5 simulator (e.g. `iPhone 17 Pro`) reports `** TEST SUCCEEDED **`. What was fixed, in case either regresses:
 
-1. **The test targets are pinned to iOS 18.5 while the app target is 18.6**, so `@testable import HEMOnitor` fails to compile: `compiling for iOS 18.5, but module 'HEMOnitor' has a minimum deployment target of iOS 18.6`. Appending `IPHONEOS_DEPLOYMENT_TARGET=18.6` to the invocation makes `build-for-testing` succeed. The real fix is to align `IPHONEOS_DEPLOYMENT_TARGET` across all three targets.
-2. **No iOS ≥18.6 simulator runtime is installed** (only 15.2 / 17.2 / 17.4 / 17.5), so no eligible simulator destination exists. Install one with `xcodebuild -downloadPlatform iOS`. The `platform=macOS,variant=Designed for iPad` destination is *not* a workaround — the test targets have no `DEVELOPMENT_TEAM` and code signing fails.
+1. **Deployment-target mismatch (resolved).** `@testable import HEMOnitor` used to fail because the app target's `IPHONEOS_DEPLOYMENT_TARGET` (18.6) was higher than the test targets' (18.5). The app target is now 17.5, so the test min (18.5) is ≥ the app min and the import compiles with no `IPHONEOS_DEPLOYMENT_TARGET=` override. The three targets are still not fully aligned (app 17.5, tests 18.5, project default 18.5) — benign for `@testable import`, but align them if you want it tidy. Do **not** hand-edit `project.pbxproj` while Xcode is open (a harness hook blocks it and it can crash Xcode); change project settings in Xcode or ask the user.
+2. **Simulator runtime (resolved).** An iOS 26.5 runtime is installed (iPhone 17 Pro / 17 / Air, iPad Pro/Air/mini, etc.), so an eligible destination exists. If you land on a machine with only the older runtimes (15.2 / 17.2 / 17.4 / 17.5) again, install one with `xcodebuild -downloadPlatform iOS`. The `platform=macOS,variant=Designed for iPad` destination is *not* a workaround — the test targets have no `DEVELOPMENT_TEAM` and code signing fails.
 
-Because of blocker 2 no test has actually been executed here, so the per-test `-only-testing:` identifier form above is unverified. Both test bundles are also still unmodified Xcode templates: `HEMOnitorTests.example` is empty and the UI tests only launch the app. There is no existing test coverage of the pharmacokinetic math.
+If `test` fails with "Scheme HEMOnitor is not currently configured for the test action", the shared scheme has lost its `<Testables>` block — restore it with `git checkout HEAD -- HEMOnitor.xcodeproj/xcshareddata/xcschemes/HEMOnitor.xcscheme`.
+
+Both test bundles are still unmodified Xcode templates: `HEMOnitorTests.example` is empty and the UI tests only launch the app. There is no existing test coverage of the pharmacokinetic math.
 
 All three target directories are Xcode 16+ `fileSystemSynchronizedGroups` (objectVersion 77): new source files placed under `HEMOnitor/`, `HEMOnitorTests/`, or `HEMOnitorUITests/` are picked up automatically — do not hand-edit `project.pbxproj` to register them.
 
