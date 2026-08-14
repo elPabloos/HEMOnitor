@@ -155,5 +155,34 @@ struct FactorVIIIModel {
             recoveryPercentPerIUPerKg = newRecovery
         }
     }
+
+    // MARK: - Proiecție prag (definit de utilizator)
+
+    /// Inversul lui `displayLevel(fromRealPercent:)`: convertește un procent afișat
+    /// înapoi în procent real, folosind calibrationFactor curent.
+    func realPercent(fromDisplayPercent displayPercent: Double) -> Double {
+        guard let calibrationFactor, calibrationFactor > 0 else { return displayPercent }
+        return displayPercent / calibrationFactor
+    }
+
+    /// Numărul de ore până când nivelul REAL curent ajunge (prin decădere) la un prag REAL țintă,
+    /// folosind aceeași curbă exponențială ca `levelAtTime` (proprietatea „memoryless” a decăderii).
+    /// Returnează nil dacă pragul nu poate fi atins prin decădere (nivel curent sub/la baseline,
+    /// prag sub/la baseline, sau prag >= nivelul curent).
+    func hoursUntilLevelReaches(
+        targetRealPercent: Double,
+        fromRealPercent currentRealPercent: Double
+    ) -> Double? {
+        guard halfLifeHours > 0,
+              currentRealPercent > baselinePercent,
+              targetRealPercent > baselinePercent,
+              targetRealPercent < currentRealPercent
+        else {
+            return nil
+        }
+        let ratio = (targetRealPercent - baselinePercent) / (currentRealPercent - baselinePercent)
+        guard ratio > 0 else { return nil }
+        return halfLifeHours * log2(1 / ratio)
+    }
 }
 

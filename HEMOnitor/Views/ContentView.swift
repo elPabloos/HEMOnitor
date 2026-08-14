@@ -10,21 +10,25 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var viewModel: FactorTrackerViewModel
     @State private var showingCalibration = false
+    @State private var showingHistory = false
 
     // Doza introdusă de utilizator, în UI (unități internaționale)
     @State private var doseText: String = ""
 
+    // Pragul introdus de utilizator pentru proiecția din NextDoseCard
+    @State private var targetThresholdText: String = ""
+
     // Simulare timp (doar cu butoane)
     @State private var simulatedOffsetHours: Double = 0
-    
+
     // Alertă confirmare reset real
     @State private var showResetRealAlert = false
-    
+
     // Timer: actualizează nivelul la fiecare 60 secunde
     private let timer = Timer
         .publish(every: 60, on: .main, in: .common)
         .autoconnect()
-    
+
     init(
         viewModel: FactorTrackerViewModel = FactorTrackerViewModel(
             weightKg: 65,
@@ -34,129 +38,68 @@ struct ContentView: View {
     ) {
         _viewModel = StateObject(wrappedValue: viewModel)
     }
-    
+
     var body: some View {
         NavigationView {
-            VStack(spacing: 16) {
-                // Simulare timp – simplă, imediat sub titlu
-                simulationSection
-                
-                // Nivel curent (afișat cu factorul de calibrare)
-                VStack(spacing: 4) {
-                    Text("Nivel curent estimat")
-                        .font(.headline)
-                    
-                    Text(String(format: "%.1f %%", viewModel.currentDisplayLevelPercent))
-                        .font(.system(size: 40, weight: .bold))
-                    
-                    Text("Valoare estimată pe baza dozelor și a timpului de înjumătățire. Nu înlocuiește analizele de laborator.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding()
-                
-                // Introducere doză + butoane rapide (fără reset aici)
-                VStack(spacing: 8) {
-                    HStack(spacing: 12) {
-                        TextField("Doză (UI)", text: $doseText)
-                            .keyboardType(.decimalPad)
-                            .textFieldStyle(.roundedBorder)
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Simulare timp – control compact, imediat sub titlu
+                    simulationControlsCard
 
-                        Button("Adaugă injecție") {
-                            addInjectionFromInput()
-                        }
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 12)
-                        .background(Color.blue.opacity(0.1))
-                        .cornerRadius(10)
-                        .disabled(parsedDoseIU == nil)
-                    }
+                    let simulatedInfo = simulatedDisplayInfo()
+                    CurrentLevelCard(
+                        realDisplayPercent: viewModel.currentDisplayLevelPercent,
+                        isSimulated: simulatedOffsetHours != 0,
+                        simulatedDisplayPercent: simulatedInfo.displayPercent,
+                        simulatedDate: simulatedInfo.simulatedDate,
+                        simulatedDaysText: simulatedDaysText()
+                    )
 
-                    if let doseValidationMessage {
-                        Text(doseValidationMessage)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                    NextDoseCard(
+                        model: viewModel.model,
+                        currentRealPercent: viewModel.currentRealLevelPercent,
+                        targetText: $targetThresholdText
+                    )
 
-                    Button("Calibrare după analize") {
-                        showingCalibration = true
+                    LastInjectionCard(
+                        model: viewModel.model,
+                        lastInjection: viewModel.injections.last
+                    )
+
+                    QuickActionsCard(
+                        doseText: $doseText,
+                        parsedDoseIU: parsedDoseIU,
+                        doseValidationMessage: doseValidationMessage,
+                        onAddInjection: addInjectionFromInput,
+                        onCalibrate: { showingCalibration = true },
+                        onViewHistory: { showingHistory = true }
+                    )
+
+                    // Buton Reset nivel (real) – la final, sub carduri
+                    Button(role: .destructive) {
+                        showResetRealAlert = true
+                    } label: {
+                        Text("Reset nivel (real)")
+                            .frame(maxWidth: .infinity)
                     }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 12)
-                    .frame(maxWidth: .infinity)
-                    .background(Color.green.opacity(0.1))
+                    .padding(.vertical, 10)
+                    .background(Color.red.opacity(0.1))
                     .cornerRadius(10)
-                }
-                .padding(.horizontal)
-                
-                // Istoric injecții - full-width, fără fundal List
-                if !viewModel.injections.isEmpty {
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(viewModel.injections.reversed()) { injection in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Doză: \(Int(injection.doseIU)) UI")
-                                        .font(.headline)
-                                    
-                                    Text(String(
-                                        format: "Nivel înainte: %.1f %%",
-                                        injection.realLevelBefore
-                                    ))
-                                    
-                                    Text(String(
-                                        format: "Peak după: %.1f %%",
-                                        injection.peakRealPercent
-                                    ))
-                                    
-                                    Text(
-                                        injection.date.formatted(
-                                            date: .abbreviated,
-                                            time: .shortened
-                                        )
-                                    )
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(12)
-                            }
+                    // Alertă de confirmare pentru reset real
+                    .alert("Ștergi istoricul și resetezi nivelul?",
+                           isPresented: $showResetRealAlert) {
+                        Button("Anulează", role: .cancel) { }
+                        Button("Resetează", role: .destructive) {
+                            viewModel.resetAll()
+                            simulatedOffsetHours = 0
                         }
-                        .padding(.horizontal)
+                    } message: {
+                        Text("Această acțiune va șterge toate injecțiile și va readuce nivelul la baseline.")
                     }
-                } else {
-                    Text("Nicio injecție înregistrată încă.")
-                        .foregroundColor(.secondary)
-                        .padding(.top, 32)
                 }
-                
-                // Buton Reset nivel (real) – la final, sub istoric
-                Button(role: .destructive) {
-                    showResetRealAlert = true
-                } label: {
-                    Text("Reset nivel (real)")
-                        .frame(maxWidth: .infinity)
-                }
-                .padding(.vertical, 10)
-                .background(Color.red.opacity(0.1))
-                .cornerRadius(10)
                 .padding(.horizontal)
-                // Alertă de confirmare pentru reset real
-                .alert("Ștergi istoricul și resetezi nivelul?",
-                       isPresented: $showResetRealAlert) {
-                    Button("Anulează", role: .cancel) { }
-                    Button("Resetează", role: .destructive) {
-                        viewModel.resetAll()
-                        simulatedOffsetHours = 0
-                    }
-                } message: {
-                    Text("Această acțiune va șterge toate injecțiile și va readuce nivelul la baseline.")
-                }
-                
-                Spacer(minLength: 8)
+                .padding(.top)
             }
-            .padding(.top)
             .navigationTitle("Factor Tracker")
             .onAppear {
                 viewModel.recalculateLevels()
@@ -167,9 +110,12 @@ struct ContentView: View {
             .sheet(isPresented: $showingCalibration) {
                 CalibrationView(viewModel: viewModel)
             }
+            .sheet(isPresented: $showingHistory) {
+                historySheet
+            }
         }
     }
-    
+
     // MARK: - Doză introdusă de utilizator
 
     /// Doza validată din câmpul de text, sau nil dacă intrarea nu e utilizabilă.
@@ -197,9 +143,63 @@ struct ContentView: View {
         doseText = ""
     }
 
-    // MARK: - Simulare UI (simplă)
-    private var simulationSection: some View {
-        VStack(spacing: 10) {
+    // MARK: - Istoric complet (sheet)
+    private var historySheet: some View {
+        NavigationView {
+            Group {
+                if viewModel.injections.isEmpty {
+                    Text("Nicio injecție înregistrată încă.")
+                        .foregroundColor(.secondary)
+                        .padding(.top, 32)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(viewModel.injections.reversed()) { injection in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Doză: \(Int(injection.doseIU)) UI")
+                                        .font(.headline)
+
+                                    Text(String(
+                                        format: "Nivel înainte: %.1f %%",
+                                        injection.realLevelBefore
+                                    ))
+
+                                    Text(String(
+                                        format: "Peak după: %.1f %%",
+                                        injection.peakRealPercent
+                                    ))
+
+                                    Text(
+                                        injection.date.formatted(
+                                            date: .abbreviated,
+                                            time: .shortened
+                                        )
+                                    )
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(12)
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+            }
+            .navigationTitle("Istoric injecții")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Închide") {
+                        showingHistory = false
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Simulare UI (control compact)
+    private var simulationControlsCard: some View {
+        CardView {
             HStack {
                 Text("Simulare timp")
                     .font(.headline)
@@ -210,37 +210,7 @@ struct ContentView: View {
                     }
                 }
             }
-            
-            // Valoare simulat + badge zile + dată/ora simulată
-            let simulatedInfo = simulatedDisplayInfo()
-            VStack(spacing: 6) {
-                HStack {
-                    Text(String(format: "Nivel simulat: %.1f %%", simulatedInfo.displayPercent))
-                        .font(.title3).bold()
-                    
-                    if let daysText = simulatedDaysText() {
-                        Text(daysText)
-                            .font(.title3).bold()
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Color.secondary.opacity(0.12))
-                            .cornerRadius(6)
-                    }
-                    
-                    Spacer()
-                }
-                
-                Text("Ora simulată: \(simulatedInfo.simulatedDate.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(10)
-            .background(Color.secondary.opacity(0.08))
-            .cornerRadius(10)
-            
-            // Doar butoane de pas rapid
+
             HStack {
                 Button("-24h") { stepSim(-24) }
                 Spacer(minLength: 0)
@@ -254,9 +224,8 @@ struct ContentView: View {
             }
             .buttonStyle(.bordered)
         }
-        .padding(.horizontal)
     }
-    
+
     // Returnează "Nd" dacă |offset| >= 24h, altfel nil
     private func simulatedDaysText() -> String? {
         let absHours = abs(simulatedOffsetHours)
@@ -264,28 +233,28 @@ struct ContentView: View {
         guard days >= 1 else { return nil }
         return "\(days)d"
     }
-    
+
     private func stepSim(_ hours: Double) {
         withAnimation {
             simulatedOffsetHours += hours
         }
     }
-    
+
     // MARK: - Calcul nivel simulat (cu extrapolare înapoi)
     private func simulatedDisplayInfo() -> (displayPercent: Double, simulatedDate: Date) {
         let simulatedDate = Date().addingTimeInterval(simulatedOffsetHours * 3600)
-        
+
         guard let last = viewModel.injections.last else {
             let real = viewModel.model.baselinePercent
             let display = viewModel.model.displayLevel(fromRealPercent: real)
             return (display, simulatedDate)
         }
-        
+
         let hoursSincePeak = simulatedDate.timeIntervalSince(last.peakDate) / 3600.0
         let baseline = viewModel.model.baselinePercent
         let tHalf = max(viewModel.model.halfLifeHours, 0.0001)
         let peak = last.peakRealPercent
-        
+
         let realAtSim: Double = {
             if hoursSincePeak >= 0 {
                 return viewModel.model.levelAtTime(
@@ -297,7 +266,7 @@ struct ContentView: View {
                 return min(peak, max(baseline, baseline + infusion))
             }
         }()
-        
+
         let displayAtSim = viewModel.model.displayLevel(fromRealPercent: realAtSim)
         return (displayAtSim, simulatedDate)
     }
