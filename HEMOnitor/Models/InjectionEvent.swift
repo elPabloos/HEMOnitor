@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct InjectionEvent: Identifiable {
+struct InjectionEvent: Identifiable, Codable, Equatable, Hashable {
     let id: UUID
     let date: Date
     let doseIU: Double

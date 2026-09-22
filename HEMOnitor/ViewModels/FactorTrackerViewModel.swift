@@ -13,7 +13,11 @@ final class FactorTrackerViewModel: ObservableObject {
     
     /// Nivelul curent de AFIȘAT (după aplicarea calibrationFactor), în procente
     @Published private(set) var currentDisplayLevelPercent: Double
-    
+
+    /// Dacă e prezent, injecțiile și parametrii de calibrare se persistă prin el.
+    /// Nil pentru previews/teste care nu au nevoie de persistență pe disc.
+    private let repository: AppRepository?
+
     // MARK: - Inițializare
     init(
         weightKg: Double,
@@ -30,8 +34,46 @@ final class FactorTrackerViewModel: ObservableObject {
         self.model = model
         self.currentRealLevelPercent = baselinePercent
         self.currentDisplayLevelPercent = baselinePercent
+        self.repository = nil
     }
-    
+
+    /// Inițializare susținută de persistență: încarcă parametrii pacientului și
+    /// istoricul injecțiilor salvate de `repository`, apoi persistă orice
+    /// modificare ulterioară a injecțiilor/calibrării prin el.
+    init(repository: AppRepository) {
+        self.repository = repository
+        let settings = repository.state.settings
+        self.model = FactorVIIIModel(
+            weightKg: settings.weightKg,
+            baselinePercent: settings.baselinePercent,
+            halfLifeHours: settings.halfLifeHours,
+            recoveryPercentPerIUPerKg: settings.recoveryPercentPerIUPerKg,
+            calibrationFactor: settings.calibrationFactor
+        )
+        self.injections = repository.state.injections
+        self.currentRealLevelPercent = settings.baselinePercent
+        self.currentDisplayLevelPercent = settings.baselinePercent
+        recalculateLevels()
+    }
+
+    // MARK: - Persistență
+
+    private func persistInjections() {
+        guard let repository else { return }
+        let injections = injections
+        repository.updateInjections { $0 = injections }
+    }
+
+    private func persistCalibration() {
+        guard let repository else { return }
+        let recovery = model.recoveryPercentPerIUPerKg
+        let calibrationFactor = model.calibrationFactor
+        repository.updateSettings { settings in
+            settings.recoveryPercentPerIUPerKg = recovery
+            settings.calibrationFactor = calibrationFactor
+        }
+    }
+
     // MARK: - Recalculare niveluri
     func recalculateLevels(at date: Date = Date()) {
         guard let last = injections.last else {
@@ -66,16 +108,18 @@ final class FactorTrackerViewModel: ObservableObject {
             peakRealPercent: peakReal
         )
         injections.append(event)
-        
+
         currentRealLevelPercent = peakReal
         currentDisplayLevelPercent = model.displayLevel(fromRealPercent: peakReal)
+        persistInjections()
     }
-    
+
     // MARK: - Resetare totală (șterge istoricul și revine la baseline)
     func resetAll() {
         injections.removeAll()
         currentRealLevelPercent = model.baselinePercent
         currentDisplayLevelPercent = model.displayLevel(fromRealPercent: model.baselinePercent)
+        persistInjections()
     }
 }
 
@@ -92,6 +136,7 @@ extension FactorTrackerViewModel {
             timeFromDoseHours: timeFromDoseHours
         )
         recalculateLevels()
+        persistCalibration()
     }
     
     // MARK: - Calibrare (B: recovery)
@@ -107,5 +152,6 @@ extension FactorTrackerViewModel {
             timeFromDoseHours: timeFromDoseHours
         )
         recalculateLevels()
+        persistCalibration()
     }
 }
