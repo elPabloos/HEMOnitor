@@ -83,12 +83,18 @@ Claude Code operates as an autonomous coding agent for this repository.
 2. Read the relevant task file from `tasks/active/`.
 3. Inspect the existing implementation before making changes.
 4. Identify relevant files, dependencies, and existing behavior.
-5. Create an implementation plan internally before editing.
+5. Ask whether the existing patterns actually serve this task. If a different one would
+   be a clear improvement in maintainability, scalability, testability, or separation of
+   concerns, write it up in the task file's **Architecture** section (see
+   `tasks/templates/task.md`) instead of either applying it silently or ignoring it.
+   Small, local improvements can just be made and recorded; anything structural needs
+   sign-off first — see "Human approval" below.
+6. Create an implementation plan internally before editing.
 
 ### Implementation
 
 - Keep changes focused on the requested task.
-- Prefer the existing architecture and patterns but suggest new ones if
+- Follow the existing architecture and established patterns by default. Propose and use alternative architectural patterns when they provide a clear technical improvement in maintainability, scalability, testability, or separation of concerns.
 - Do not introduce new dependencies unless explicitly required.
 - Do not refactor unrelated code.
 - Do not change existing business logic unless the task explicitly requires it.
