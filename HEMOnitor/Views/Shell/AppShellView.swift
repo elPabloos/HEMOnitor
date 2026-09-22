@@ -5,23 +5,50 @@
 
 import SwiftUI
 
-/// The app root: a tab destination plus the floating bar overlay.
+/// The app root: onboarding until it's completed, then a tab destination plus the
+/// floating bar overlay.
 ///
 /// Navigation state lives here as plain `@State` rather than in a router object —
-/// there are four destinations and one sheet, so an observable router would add
-/// indirection without buying anything. Screens that need to steer navigation are
-/// handed a closure (`HomeView`'s "no stock" prompt will jump to the Stock tab),
-/// matching how the existing card views already take `onAddInjection`/`onCalibrate`.
+/// there are four destinations and a few sheets, so an observable router would add
+/// indirection and a second source of truth without buying testability or decoupling.
+/// Screens that need to steer navigation are handed a closure (Home's "no stock"
+/// prompt jumps to the Stock tab), matching how the other views already take
+/// `onCalibrate`/`onAddDelivery`-style callbacks.
+///
+/// This is also the only place that knows about both the factor and stock domains.
+/// Neither view model references the other; the "days of cover" estimate, which needs
+/// dosing history *and* stock on hand, is composed here and pushed into `StockViewModel`.
 struct AppShellView: View {
     @ObservedObject var viewModel: FactorTrackerViewModel
+    @ObservedObject var stockViewModel: StockViewModel
 
     @State private var selectedTab: AppTab = .home
-    @State private var isShowingLogSheet = false
+    @State private var presentedSheet: ShellSheet?
 
     /// Height reserved at the bottom so scrolling content clears the floating bar.
     private let barClearance: CGFloat = 86
 
+    private enum ShellSheet: String, Identifiable {
+        case log, calibration, timeline, addDelivery
+        var id: String { rawValue }
+    }
+
     var body: some View {
+        Group {
+            if viewModel.hasCompletedOnboarding {
+                shell
+            } else {
+                OnboardingView(viewModel: viewModel) {
+                    // `completeOnboarding()` has already flipped and persisted the
+                    // flag by the time this fires, so the Group re-evaluates itself.
+                }
+            }
+        }
+        .background(AppColor.backgroundGradient.ignoresSafeArea())
+        .animation(.easeInOut(duration: 0.25), value: viewModel.hasCompletedOnboarding)
+    }
+
+    private var shell: some View {
         ZStack(alignment: .bottom) {
             AppColor.backgroundGradient
                 .ignoresSafeArea()
@@ -35,10 +62,17 @@ struct AppShellView: View {
 
             bar
         }
-        .sheet(isPresented: $isShowingLogSheet) {
-            // Replaced by the real log sheet in the sheet-system phase.
-            ComingSoonView(tab: .home)
-                .background(AppColor.backgroundGradient)
+        .onAppear(perform: syncConsumptionEstimate)
+        .onChange(of: viewModel.injections) { _, _ in syncConsumptionEstimate() }
+        .sheet(item: $presentedSheet) { sheet in
+            switch sheet {
+            case .calibration:
+                CalibrationView(viewModel: viewModel)
+            case .log, .timeline, .addDelivery:
+                // Real contents arrive with the sheet-system and timeline phases.
+                ComingSoonView(tab: selectedTab)
+                    .background(AppColor.backgroundGradient)
+            }
         }
     }
 
@@ -46,22 +80,66 @@ struct AppShellView: View {
     private var content: some View {
         switch selectedTab {
         case .home:
-            HomeView(viewModel: viewModel)
-        case .stock, .alerts, .you:
-            ComingSoonView(tab: selectedTab)
+            HomeView(
+                viewModel: viewModel,
+                hasStock: !stockViewModel.batches.isEmpty,
+                coverDaysText: coverDaysText,
+                onAddDelivery: { selectedTab = .stock }
+            )
+        case .stock:
+            StockView(
+                viewModel: stockViewModel,
+                onAddDelivery: { presentedSheet = .addDelivery }
+            )
+        case .alerts:
+            ComingSoonView(tab: .alerts)
+        case .you:
+            YouView(
+                viewModel: viewModel,
+                onOpenTimeline: { presentedSheet = .timeline },
+                onCalibrate: { presentedSheet = .calibration }
+            )
         }
     }
 
     private var bar: some View {
         HStack(spacing: 12) {
             CustomTabBar(selection: $selectedTab)
-            FloatingLogButton { isShowingLogSheet = true }
+            FloatingLogButton { presentedSheet = .log }
         }
         .padding(.horizontal, 18)
         .padding(.bottom, 6)
     }
+
+    // MARK: - Cross-domain composition
+
+    /// Stock alone can't know how fast it is being used, and the factor view model
+    /// doesn't know what's on hand — so the estimate is derived here and handed to
+    /// `StockViewModel`, keeping the two domains independent of each other.
+    private func syncConsumptionEstimate() {
+        stockViewModel.averageDailyConsumptionIU = viewModel.averageDailyDoseIU()
+    }
+
+    private var coverDaysText: String? {
+        guard let days = stockViewModel.daysOfCoverage else { return nil }
+        return days == 1 ? "1 day" : "\(days) days"
+    }
 }
 
 #Preview {
-    AppShellView(viewModel: FactorTrackerViewModel())
+    AppShellView(
+        viewModel: {
+            var settings = AppSettings.defaultSettings
+            settings.hasCompletedOnboarding = true
+            return FactorTrackerViewModel(settings: settings)
+        }(),
+        stockViewModel: StockViewModel()
+    )
+}
+
+#Preview("Onboarding") {
+    AppShellView(
+        viewModel: FactorTrackerViewModel(settings: .defaultSettings),
+        stockViewModel: StockViewModel()
+    )
 }

@@ -251,6 +251,18 @@ final class FactorTrackerViewModel: ObservableObject {
         persistInjections()
     }
 
+    /// Mean IU consumed per day across a trailing window, or nil when there is no
+    /// history in it. Divides by the full window rather than by the number of doses,
+    /// so a patient dosing twice a week averages correctly rather than looking like
+    /// they consume a full dose daily. `now` is injectable so this is testable.
+    func averageDailyDoseIU(overLastDays days: Int = 30, now: Date = Date()) -> Double? {
+        guard days > 0 else { return nil }
+        let cutoff = now.addingTimeInterval(-Double(days) * 86_400)
+        let recent = injections.filter { $0.date >= cutoff && $0.date <= now }
+        guard !recent.isEmpty else { return nil }
+        return recent.reduce(0) { $0 + $1.doseIU } / Double(days)
+    }
+
     // MARK: - Full reset (clears history and returns to baseline)
     func resetAll() {
         injections.removeAll()
