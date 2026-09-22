@@ -32,11 +32,11 @@ enum SafetyZone {
 
     var color: Color {
         switch self {
-        case .critical: return .red
-        case .severe: return .orange
-        case .moderate: return .yellow
-        case .safe: return .green
-        case .high: return .blue
+        case .critical: return AppColor.zoneCritical
+        case .severe: return AppColor.zoneLow
+        case .moderate: return AppColor.zonePartial
+        case .safe: return AppColor.zoneWellCovered
+        case .high: return AppColor.zoneAboveNormal
         }
     }
 

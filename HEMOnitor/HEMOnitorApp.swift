@@ -9,6 +9,10 @@ import SwiftUI
 
 @main
 struct HEMOnitorApp: App {
+    init() {
+        FontRegistrar.registerBundledFontsIfNeeded()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
