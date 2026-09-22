@@ -118,8 +118,18 @@ final class FactorTrackerViewModel: ObservableObject {
     }
 
     // MARK: - Level recalculation
+
+    /// Decays from the most recent injection at or before `date`.
+    ///
+    /// Note this is the last injection *at or before* `date`, not simply
+    /// `injections.last`. With back-dating, `injections` stays sorted but may
+    /// contain entries later than the date being asked about (a future-dated
+    /// entry, or a backwards time simulation), and decaying from one of those
+    /// would report a level that hasn't happened yet. When every entry is in the
+    /// past — the only case that existed before back-dating — this picks
+    /// `injections.last` and behaves exactly as it did before.
     func recalculateLevels(at date: Date = Date()) {
-        guard let last = injections.last else {
+        guard let last = injections.last(where: { $0.date <= date }) else {
             currentRealLevelPercent = model.baselinePercent
             currentDisplayLevelPercent = model.displayLevel(fromRealPercent: currentRealLevelPercent)
             return
@@ -132,28 +142,112 @@ final class FactorTrackerViewModel: ObservableObject {
         currentRealLevelPercent = real
         currentDisplayLevelPercent = model.displayLevel(fromRealPercent: real)
     }
-    
-    // MARK: - Injections
-    func addInjection(doseIU: Double, at date: Date = Date()) {
-        recalculateLevels(at: date)
-        let levelBefore = currentRealLevelPercent
-        
-        let peakReal = model.newPeakAfterAdditionalDose(
-            doseIU: doseIU,
-            currentRealLevelPercent: levelBefore
-        )
-        
-        let event = InjectionEvent(
-            id: UUID(),
-            date: date,
-            doseIU: doseIU,
-            realLevelBefore: levelBefore,
-            peakRealPercent: peakReal
-        )
-        injections.append(event)
 
-        currentRealLevelPercent = peakReal
-        currentDisplayLevelPercent = model.displayLevel(fromRealPercent: peakReal)
+    // MARK: - Injections
+
+    /// `injections` is kept sorted ascending by date. This returns where an event
+    /// dated `date` belongs; searching for the first strictly-later entry means an
+    /// event lands *after* any existing entries sharing its timestamp, which gives
+    /// same-instant doses a stable, insertion-ordered sequence.
+    private func insertionIndex(for date: Date) -> Int {
+        injections.firstIndex(where: { $0.date > date }) ?? injections.count
+    }
+
+    /// Recomputes `realLevelBefore`/`peakRealPercent` for every event from `index`
+    /// onward, then refreshes the current level.
+    ///
+    /// Each event's peak is built on the level left behind by the one before it, so
+    /// inserting, re-dating or removing an event invalidates the whole tail of the
+    /// chain. Events before `index` are untouched — they can't be affected by a
+    /// change that happens after them. Each event keeps its `id`, so SwiftUI
+    /// identity survives the rewrite.
+    private func recomputeChain(fromIndex index: Int) {
+        guard index < injections.count else {
+            // Nothing after the change (e.g. the last event was deleted).
+            recalculateLevels()
+            return
+        }
+
+        for i in max(0, index)..<injections.count {
+            let event = injections[i]
+
+            let realLevelBefore: Double
+            if i == 0 {
+                realLevelBefore = model.baselinePercent
+            } else {
+                let previous = injections[i - 1]
+                let hours = event.date.timeIntervalSince(previous.peakDate) / 3600.0
+                realLevelBefore = model.levelAtTime(
+                    peakPercent: previous.peakRealPercent,
+                    hoursSincePeak: max(0, hours)
+                )
+            }
+
+            injections[i] = InjectionEvent(
+                id: event.id,
+                date: event.date,
+                doseIU: event.doseIU,
+                realLevelBefore: realLevelBefore,
+                peakRealPercent: model.newPeakAfterAdditionalDose(
+                    doseIU: event.doseIU,
+                    currentRealLevelPercent: realLevelBefore
+                )
+            )
+        }
+
+        recalculateLevels()
+    }
+
+    /// Records an injection. `date` may be in the past: the event is spliced into
+    /// chronological position and every later event is recomputed on top of it.
+    func addInjection(doseIU: Double, at date: Date = Date()) {
+        let index = insertionIndex(for: date)
+        injections.insert(
+            InjectionEvent(
+                id: UUID(),
+                date: date,
+                doseIU: doseIU,
+                // Placeholders; recomputeChain fills in the real values below.
+                realLevelBefore: model.baselinePercent,
+                peakRealPercent: model.baselinePercent
+            ),
+            at: index
+        )
+        recomputeChain(fromIndex: index)
+        persistInjections()
+    }
+
+    /// Changes an existing injection's dose and/or date. Re-dating moves it to its
+    /// new chronological position and recomputes from whichever position comes
+    /// first, so both the old and new neighbourhoods are corrected.
+    func updateInjection(id: UUID, doseIU: Double? = nil, date: Date? = nil) {
+        guard let oldIndex = injections.firstIndex(where: { $0.id == id }) else { return }
+        let existing = injections[oldIndex]
+
+        injections.remove(at: oldIndex)
+        let newDate = date ?? existing.date
+        let newIndex = insertionIndex(for: newDate)
+        injections.insert(
+            InjectionEvent(
+                id: existing.id,
+                date: newDate,
+                doseIU: doseIU ?? existing.doseIU,
+                // Placeholders; recomputeChain fills in the real values below.
+                realLevelBefore: model.baselinePercent,
+                peakRealPercent: model.baselinePercent
+            ),
+            at: newIndex
+        )
+
+        recomputeChain(fromIndex: min(oldIndex, newIndex))
+        persistInjections()
+    }
+
+    /// Removes an injection and recomputes every event that followed it.
+    func deleteInjection(id: UUID) {
+        guard let index = injections.firstIndex(where: { $0.id == id }) else { return }
+        injections.remove(at: index)
+        recomputeChain(fromIndex: index)
         persistInjections()
     }
 

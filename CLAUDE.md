@@ -29,7 +29,7 @@ Building and testing both work on this machine as of 2026-08-12; the two blocker
 
 If `test` fails with "Scheme HEMOnitor is not currently configured for the test action", the shared scheme has lost its `<Testables>` block — restore it with `git checkout HEAD -- HEMOnitor.xcodeproj/xcshareddata/xcschemes/HEMOnitor.xcscheme`.
 
-Both test bundles are still unmodified Xcode templates: `HEMOnitorTests.example` is empty and the UI tests only launch the app. There is no existing test coverage of the pharmacokinetic math.
+`HEMOnitorTests` (Swift Testing) covers persistence (`PersistenceTests`), patient settings (`PatientSettingsTests`) and the injection chain (`InjectionChainTests` — insertion incl. back-dating, editing, deletion, and the real/display split). The template `HEMOnitorTests.example` is still empty, and the UI tests are still the unmodified template that only launches the app. `FactorVIIIModel`'s formulas have no direct unit tests of their own; they're exercised indirectly through the chain tests.
 
 All three target directories are Xcode 16+ `fileSystemSynchronizedGroups` (objectVersion 77): new source files placed under `HEMOnitor/`, `HEMOnitorTests/`, or `HEMOnitorUITests/` are picked up automatically — do not hand-edit `project.pbxproj` to register them.
 
@@ -59,7 +59,11 @@ Both paths also assume the dose was given from `baselinePercent`, ignoring any r
 
 ### Injection history and current level
 
-`FactorTrackerViewModel.recalculateLevels(at:)` only ever decays from `injections.last`; it does not sum contributions from earlier injections. Stacking is handled at injection time instead: `addInjection` recalculates to `date`, reads the current real level, and adds the new dose's delta on top to form the new peak. Consequence: injections must be appended in chronological order, and back-dating an injection would silently corrupt the chain.
+`FactorTrackerViewModel.recalculateLevels(at:)` decays from a single injection — the most recent one at or before the given date — rather than summing contributions from all earlier injections. Stacking is handled at injection time instead: each event stores the real level immediately before it (`realLevelBefore`) and the peak it produced (`peakRealPercent`), each built on the decayed remainder of the event before it.
+
+`injections` is therefore an ordered chain, kept sorted ascending by `date`, where every event depends on the one preceding it. Any change to the chain invalidates everything after the change, so `addInjection`, `updateInjection` and `deleteInjection` all splice the array and then call `recomputeChain(fromIndex:)`, which walks forward rebuilding each event from its predecessor (events before the change point are provably unaffected and left alone). Events keep their `id` across a rebuild, so SwiftUI identity survives.
+
+This means back-dating is fully supported: an injection can be recorded, re-dated or deleted at any position, and the resulting chain depends only on the *set* of injections, not the order they were entered (there's a test asserting exactly that). Two injections sharing a timestamp are ordered by insertion and stack without decay between them.
 
 `resetAll()` clears the history and returns the level to baseline but deliberately leaves `calibrationFactor` in place, so a reset app is still calibrated.
 
@@ -84,7 +88,7 @@ Claude Code operates as an autonomous coding agent for this repository.
 ### Implementation
 
 - Keep changes focused on the requested task.
-- Prefer the existing architecture and patterns.
+- Prefer the existing architecture and patterns but suggest new ones if
 - Do not introduce new dependencies unless explicitly required.
 - Do not refactor unrelated code.
 - Do not change existing business logic unless the task explicitly requires it.
