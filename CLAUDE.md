@@ -52,7 +52,15 @@ To reach a specific app state without tapping through it, seed the persisted sto
 
 ## Architecture
 
-MVVM, ~735 lines of Swift in the app target, with no persistence and no networking — all state lives in memory and is lost on relaunch. `HEMOnitorApp` → `ContentView` (owns a `FactorTrackerViewModel` via `@StateObject`) → `CalibrationView`, presented as a sheet and sharing the same view model via `@ObservedObject`.
+MVVM, with local persistence and no networking. Everything the user enters — patient settings, injection history, stock batches, alert preferences — is saved to a single JSON file (`app_state.json`) under Application Support, and reloaded at launch. See "Persistence" below.
+
+`HEMOnitorApp` owns one `AppRepository` plus a `FactorTrackerViewModel` and a `StockViewModel` built against it, and roots at `AppShellView`. That shell shows `OnboardingView` until onboarding is done, then a four-tab layout (`HomeView`, `StockView`, Alerts placeholder, `YouView`) with a floating log button, and presents the sheets (`LogDoseSheet`, `AddStockSheet`, `CalibrationView`).
+
+### Persistence
+
+`PersistenceStore` is a two-method protocol (`load()`/`save(_:)`) with two conformances: `FileManagerPersistenceStore` (atomic JSON on disk, falls back to defaults if the file is missing or corrupt) and `InMemoryPersistenceStore` (previews and tests). `AppRepository` holds the loaded `AppState` and exposes scoped mutators, so every view model writes into one shared state rather than clobbering each other's slice. View models call an explicit `persist…()` after each mutation — no automatic saving.
+
+The protocol is deliberately the only thing that knows storage is a local file. Swapping in a remote backend means writing a third conformance; note the protocol is currently **synchronous**, which is the main thing that would have to change for a network-backed store.
 
 ### The real vs. display level distinction
 
