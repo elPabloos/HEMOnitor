@@ -39,14 +39,14 @@ To change a **build setting** (e.g. `PRODUCT_BUNDLE_IDENTIFIER`), use the Xcode 
 
 Real taps **are** possible, contrary to what earlier task notes (003) recorded. `osascript`/System Events does fail on Accessibility permissions, but Xcode's own device-interaction tooling works and was used to verify the dose-logging flow end to end in task 015. The sequence:
 
-1. `mcp__xcode__DeviceInteractionStartSession` with a device UUID and a session name.
-2. **Spawn a subagent** that loads the `device-interaction` skill and performs the taps via `DeviceInteractionSynthesize` (passing the session key). The session tool refuses to drive events from the calling agent — this indirection is required, not optional.
-3. `mcp__xcode__DeviceInteractionEndSession` as soon as you're done; holding a session open is expensive.
+**Spawn a subagent to do it**, and have that subagent own the whole session: `DeviceInteractionStartSession` → `DeviceInteractionSynthesize` (repeatedly) → `DeviceInteractionEndSession`. Sessions are expensive, so always end them, including on abort.
 
-Two traps worth knowing:
+Four traps, all hit in practice:
 
-- **Xcode's device list differs from `simctl`'s.** Xcode exposed only iOS 27.0 simulators while `simctl` had been using an iOS 26.5 iPhone 17 Pro, which was *not* selectable. Pick the device from the list `DeviceInteractionStartSession` returns on failure, then `simctl install`/`launch` onto that same UUID.
-- Interactions must choose coordinates from a fresh UI hierarchy dump, never from a screenshot.
+- **`StartSession` tells you to spawn a subagent that loads a `device-interaction` skill. That skill is frequently not resolvable** — one agent found it, two later ones could not, and stalled. Tell the subagent up front to ignore that instruction and drive the `mcp__xcode__DeviceInteraction*` tools directly from their schemas.
+- **Don't open the session in the parent and hand the key down.** It doesn't survive the subagent being resumed ("Session not found"). Let the subagent open its own.
+- **Xcode's device list differs from `simctl`'s.** Xcode exposed only iOS 27.0 simulators while `simctl` had been using an iOS 26.5 iPhone 17 Pro, which was *not* selectable. Pick a device from the list `StartSession` returns on failure, then `simctl install`/`launch` onto that same UUID.
+- **Coordinates must come from a fresh UI hierarchy dump**, never from the screenshot. `Synthesize` returns paths to both; `interactionCommand` is a short string (`t <x> <y>` to tap), and omitting it just captures current state.
 
 To reach a specific app state without tapping through it, seed the persisted store directly: `xcrun simctl get_app_container <udid> <bundle-id> data`, then write `Library/Application Support/app_state.json` (see `AppState`; dates are `millisecondsSince1970`) and relaunch. Note the app must have been launched once first so the container exists.
 

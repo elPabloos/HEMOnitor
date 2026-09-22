@@ -21,6 +21,7 @@ import SwiftUI
 struct AppShellView: View {
     @ObservedObject var viewModel: FactorTrackerViewModel
     @ObservedObject var stockViewModel: StockViewModel
+    @ObservedObject var alertsViewModel: AlertsViewModel
 
     @State private var selectedTab: AppTab = .home
     @State private var presentedSheet: ShellSheet?
@@ -62,8 +63,16 @@ struct AppShellView: View {
 
             bar
         }
-        .onAppear(perform: syncConsumptionEstimate)
-        .onChange(of: viewModel.injections) { _, _ in syncConsumptionEstimate() }
+        .onAppear {
+            syncConsumptionEstimate()
+            Task { await syncAlertSchedule() }
+        }
+        .onChange(of: viewModel.injections) { _, _ in
+            syncConsumptionEstimate()
+            // The predicted crossing moves with every dose logged, edited or deleted,
+            // so the pending notifications have to be rebuilt alongside it.
+            Task { await syncAlertSchedule() }
+        }
         .sheet(item: $presentedSheet) { sheet in
             switch sheet {
             case .calibration:
@@ -104,7 +113,7 @@ struct AppShellView: View {
                 onAddDelivery: { presentedSheet = .addDelivery }
             )
         case .alerts:
-            ComingSoonView(tab: .alerts)
+            AlertsView(viewModel: alertsViewModel)
         case .you:
             YouView(
                 viewModel: viewModel,
@@ -132,6 +141,16 @@ struct AppShellView: View {
         stockViewModel.averageDailyConsumptionIU = viewModel.averageDailyDoseIU()
     }
 
+    /// Alerts fire off the decay curve, which only the factor view model knows about.
+    /// Same arrangement as the stock estimate: composed here so neither side has to
+    /// know the other exists.
+    private func syncAlertSchedule() async {
+        await alertsViewModel.refreshSchedule(
+            model: viewModel.model,
+            currentRealPercent: viewModel.currentRealLevelPercent
+        )
+    }
+
     private var coverDaysText: String? {
         guard let days = stockViewModel.daysOfCoverage else { return nil }
         return days == 1 ? "1 day" : "\(days) days"
@@ -145,13 +164,15 @@ struct AppShellView: View {
             settings.hasCompletedOnboarding = true
             return FactorTrackerViewModel(settings: settings)
         }(),
-        stockViewModel: StockViewModel()
+        stockViewModel: StockViewModel(),
+        alertsViewModel: AlertsViewModel()
     )
 }
 
 #Preview("Onboarding") {
     AppShellView(
         viewModel: FactorTrackerViewModel(settings: .defaultSettings),
-        stockViewModel: StockViewModel()
+        stockViewModel: StockViewModel(),
+        alertsViewModel: AlertsViewModel()
     )
 }

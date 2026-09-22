@@ -14,6 +14,7 @@ struct HEMOnitorApp: App {
     private let repository: AppRepository
     @StateObject private var viewModel: FactorTrackerViewModel
     @StateObject private var stockViewModel: StockViewModel
+    @StateObject private var alertsViewModel: AlertsViewModel
 
     init() {
         FontRegistrar.registerBundledFontsIfNeeded()
@@ -23,11 +24,16 @@ struct HEMOnitorApp: App {
         self.repository = repository
         _viewModel = StateObject(wrappedValue: FactorTrackerViewModel(repository: repository))
         _stockViewModel = StateObject(wrappedValue: StockViewModel(repository: repository))
+        _alertsViewModel = StateObject(wrappedValue: AlertsViewModel(repository: repository))
     }
 
     var body: some Scene {
         WindowGroup {
-            AppShellView(viewModel: viewModel, stockViewModel: stockViewModel)
+            AppShellView(
+                viewModel: viewModel,
+                stockViewModel: stockViewModel,
+                alertsViewModel: alertsViewModel
+            )
         }
     }
 }
