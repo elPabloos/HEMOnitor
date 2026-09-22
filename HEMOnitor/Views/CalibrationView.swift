@@ -99,7 +99,7 @@ struct CalibrationView: View {
 
                 // Section: action
                 Section {
-                    Button("Calibrate model") {
+                    Button {
                         // Comma-tolerant parsing
                         let dose = Double(doseText.replacingOccurrences(of: ",", with: "."))
                         let observed = Double(observedPercentText.replacingOccurrences(of: ",", with: "."))
@@ -126,18 +126,27 @@ struct CalibrationView: View {
 
                         // Dismiss the sheet after calibrating
                         dismiss()
+                    } label: {
+                        Text("Calibrate model")
                     }
+                    .buttonStyle(.primaryPill)
                     .disabled(doseText.isEmpty || observedPercentText.isEmpty)
+                    .opacity(doseText.isEmpty || observedPercentText.isEmpty ? 0.5 : 1)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
                 } footer: {
                     Text("Adjusting recovery (B) changes the PK parameter used to compute the REAL level. If you're not sure, leave only option A on.")
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(AppColor.backgroundGradient)
             .navigationTitle("FVIII Calibration")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") {
                         dismiss()
                     }
+                    .foregroundStyle(AppColor.primaryGreen)
                 }
             }
         }

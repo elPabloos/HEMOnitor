@@ -7,263 +7,181 @@
 
 import SwiftUI
 
+/// The Home tab: the current estimated level (in one of three user-chosen
+/// styles), a cover-window projection, a stock nudge, quick stats and recent
+/// activity. Deliberately has no `NavigationStack`/`navigationTitle` — the
+/// custom header below replaces it so `AppShellView`'s background gradient
+/// shows through (see task 014).
 struct HomeView: View {
     /// Owned by `HEMOnitorApp` and passed down through `AppShellView` — observed
     /// here, not owned, so switching tabs away and back doesn't disturb it.
     @ObservedObject var viewModel: FactorTrackerViewModel
+
+    /// Whether there is stock on record. Home does not read `AppRepository`
+    /// itself — the parent (which owns the Stock domain) hands this down, so
+    /// the no-stock prompt can be shown/hidden without Home depending on Stock.
+    var hasStock: Bool = false
+
+    /// Pre-formatted "days of cover" text for the stat tile, or nil to show a
+    /// placeholder. Owned by the parent for the same reason as `hasStock`.
+    var coverDaysText: String? = nil
+
+    /// Called when the no-stock prompt is tapped (expected to switch to the
+    /// Stock tab).
+    var onAddDelivery: () -> Void = {}
+
     @State private var showingCalibration = false
-    @State private var showingHistory = false
 
-    // User-entered dose, in IU (international units)
-    @State private var doseText: String = ""
+    /// The "Look ahead" slider on the cover-window card, forward-only (0...72h).
+    @State private var lookAheadHours: Double = 0
 
-    // User-entered threshold for the NextDoseCard projection
-    @State private var targetThresholdText: String = ""
-
-    // Time simulation (buttons only)
-    @State private var simulatedOffsetHours: Double = 0
-
-    // Real-reset confirmation alert
     @State private var showResetRealAlert = false
 
-    // Timer: refreshes the level every 60 seconds
+    // Timer: refreshes the level every 60 seconds.
     private let timer = Timer
         .publish(every: 60, on: .main, in: .common)
         .autoconnect()
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    // Time simulation – compact control, right under the title
-                    simulationControlsCard
-
-                    let simulatedInfo = simulatedDisplayInfo()
-                    CurrentLevelCard(
-                        realDisplayPercent: viewModel.currentDisplayLevelPercent,
-                        isSimulated: simulatedOffsetHours != 0,
-                        simulatedDisplayPercent: simulatedInfo.displayPercent,
-                        simulatedDate: simulatedInfo.simulatedDate,
-                        simulatedDaysText: simulatedDaysText()
-                    )
-
-                    NextDoseCard(
-                        model: viewModel.model,
-                        currentRealPercent: viewModel.currentRealLevelPercent,
-                        targetText: $targetThresholdText
-                    )
-
-                    LastInjectionCard(
-                        model: viewModel.model,
-                        lastInjection: viewModel.injections.last
-                    )
-
-                    QuickActionsCard(
-                        doseText: $doseText,
-                        parsedDoseIU: parsedDoseIU,
-                        doseValidationMessage: doseValidationMessage,
-                        onAddInjection: addInjectionFromInput,
-                        onCalibrate: { showingCalibration = true },
-                        onViewHistory: { showingHistory = true }
-                    )
-
-                    // Reset (real) level button – at the end, below the cards
-                    Button(role: .destructive) {
-                        showResetRealAlert = true
-                    } label: {
-                        Text("Reset level (real)")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .padding(.vertical, 10)
-                    .background(Color.red.opacity(0.1))
-                    .cornerRadius(10)
-                    // Confirmation alert for the real reset
-                    .alert("Clear history and reset the level?",
-                           isPresented: $showResetRealAlert) {
-                        Button("Cancel", role: .cancel) { }
-                        Button("Reset", role: .destructive) {
-                            viewModel.resetAll()
-                            simulatedOffsetHours = 0
-                        }
-                    } message: {
-                        Text("This will delete all injections and return the level to baseline.")
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.top)
-            }
-            .navigationTitle("Factor Tracker")
-            .onAppear {
-                viewModel.recalculateLevels()
-            }
-            .onReceive(timer) { date in
-                viewModel.recalculateLevels(at: date)
-            }
-            .sheet(isPresented: $showingCalibration) {
-                CalibrationView(viewModel: viewModel)
-            }
-            .sheet(isPresented: $showingHistory) {
-                historySheet
-            }
-        }
-    }
-
-    // MARK: - User-entered dose
-
-    /// The validated dose from the text field, or nil if the input isn't usable.
-    /// Comma-tolerant parsing, same as CalibrationView.
-    private var parsedDoseIU: Double? {
-        let normalized = doseText
-            .replacingOccurrences(of: ",", with: ".")
-            .trimmingCharacters(in: .whitespaces)
-        guard let dose = Double(normalized), dose.isFinite, dose > 0 else {
-            return nil
-        }
-        return dose
-    }
-
-    /// Shown only once the user has typed something, but the dose isn't valid.
-    private var doseValidationMessage: String? {
-        guard !doseText.isEmpty, parsedDoseIU == nil else { return nil }
-        return "Enter a valid dose greater than 0."
-    }
-
-    private func addInjectionFromInput() {
-        guard let dose = parsedDoseIU else { return }
-        viewModel.addInjection(doseIU: dose)
-        simulatedOffsetHours = 0
-        doseText = ""
-    }
-
-    // MARK: - Full history (sheet)
-    private var historySheet: some View {
-        NavigationStack {
-            Group {
-                if viewModel.injections.isEmpty {
-                    Text("No injection recorded yet.")
-                        .foregroundColor(.secondary)
-                        .padding(.top, 32)
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(viewModel.injections.reversed()) { injection in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Dose: \(Int(injection.doseIU)) IU")
-                                        .font(.headline)
-
-                                    Text(String(
-                                        format: "Level before: %.1f %%",
-                                        injection.realLevelBefore
-                                    ))
-
-                                    Text(String(
-                                        format: "Peak after: %.1f %%",
-                                        injection.peakRealPercent
-                                    ))
-
-                                    Text(
-                                        injection.date.formatted(
-                                            date: .abbreviated,
-                                            time: .shortened
-                                        )
-                                    )
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(12)
-                            }
-                        }
-                        .padding(.horizontal)
-                    }
-                }
-            }
-            .navigationTitle("Injection history")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") {
-                        showingHistory = false
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Simulation controls (compact)
-    private var simulationControlsCard: some View {
-        CardView {
-            HStack {
-                Text("Time simulation")
-                    .font(.headline)
-                Spacer()
-                if simulatedOffsetHours != 0 {
-                    Button("Reset simulation") {
-                        withAnimation { simulatedOffsetHours = 0 }
-                    }
-                }
-            }
-
-            HStack {
-                Button("-24h") { stepSim(-24) }
-                Spacer(minLength: 0)
-                Button("+1h") { stepSim(+1) }
-                Spacer(minLength: 0)
-                Button("+6h") { stepSim(+6) }
-                Spacer(minLength: 0)
-                Button("+12h") { stepSim(+12) }
-                Spacer(minLength: 0)
-                Button("+24h") { stepSim(+24) }
-            }
-            .buttonStyle(.bordered)
-        }
-    }
-
-    // Returns "Nd" if |offset| >= 24h, otherwise nil
-    private func simulatedDaysText() -> String? {
-        let absHours = abs(simulatedOffsetHours)
-        let days = Int(absHours / 24.0)
-        guard days >= 1 else { return nil }
-        return "\(days)d"
-    }
-
-    private func stepSim(_ hours: Double) {
-        withAnimation {
-            simulatedOffsetHours += hours
-        }
-    }
-
-    // MARK: - Simulated level calculation (with backward extrapolation)
-    private func simulatedDisplayInfo() -> (displayPercent: Double, simulatedDate: Date) {
-        let simulatedDate = Date().addingTimeInterval(simulatedOffsetHours * 3600)
-
-        guard let last = viewModel.injections.last else {
-            let real = viewModel.model.baselinePercent
-            let display = viewModel.model.displayLevel(fromRealPercent: real)
-            return (display, simulatedDate)
-        }
-
-        let hoursSincePeak = simulatedDate.timeIntervalSince(last.peakDate) / 3600.0
-        let baseline = viewModel.model.baselinePercent
-        let tHalf = max(viewModel.model.halfLifeHours, 0.0001)
-        let peak = last.peakRealPercent
-
-        let realAtSim: Double = {
-            if hoursSincePeak >= 0 {
-                return viewModel.model.levelAtTime(
-                    peakPercent: peak,
-                    hoursSincePeak: hoursSincePeak
+        ScrollView {
+            VStack(spacing: Theme.Spacing.stackGapLarge) {
+                HomeHeaderView(
+                    isCalibrated: viewModel.model.calibrationFactor != nil,
+                    onCalibrate: { showingCalibration = true }
                 )
-            } else {
-                let infusion = max(0, (peak - baseline)) * pow(0.5, hoursSincePeak / tHalf)
-                return min(peak, max(baseline, baseline + infusion))
-            }
-        }()
 
-        let displayAtSim = viewModel.model.displayLevel(fromRealPercent: realAtSim)
-        return (displayAtSim, simulatedDate)
+                VStack(spacing: Theme.Spacing.stackGap) {
+                    LevelVisualization(
+                        displayPercent: viewModel.currentDisplayLevelPercent,
+                        zone: zone,
+                        style: viewModel.displayStyle,
+                        curvePoints: curvePoints,
+                        onStyleChange: { viewModel.displayStyle = $0 }
+                    )
+                    ZoneBadge(zone: zone)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Theme.Spacing.stackGap)
+
+                CoverWindowCard(
+                    model: viewModel.model,
+                    currentRealPercent: viewModel.currentRealLevelPercent,
+                    lookAheadHours: $lookAheadHours
+                )
+
+                if !hasStock {
+                    NoStockPromptCard(onTap: onAddDelivery)
+                }
+
+                HStack(spacing: Theme.Spacing.stackGap) {
+                    StatTile(
+                        title: "Last dose",
+                        value: lastDoseValue,
+                        subtitle: lastDoseSubtitle
+                    )
+                    StatTile(
+                        title: "Days of cover",
+                        value: coverDaysText ?? "—",
+                        subtitle: coverDaysText == nil ? "Not tracked yet" : nil
+                    )
+                }
+
+                RecentActivityCard(injections: viewModel.injections, model: viewModel.model)
+
+                resetButton
+
+                footnote
+            }
+            .padding(.horizontal, Theme.Spacing.screenGutter)
+            .padding(.top, Theme.Spacing.stackGap)
+            .padding(.bottom, Theme.Spacing.stackGapLarge)
+        }
+        .scrollIndicators(.hidden)
+        .onAppear {
+            viewModel.recalculateLevels()
+        }
+        .onReceive(timer) { date in
+            viewModel.recalculateLevels(at: date)
+        }
+        .sheet(isPresented: $showingCalibration) {
+            CalibrationView(viewModel: viewModel)
+        }
+    }
+
+    // MARK: - Derived display state
+
+    private var zone: SafetyZone {
+        SafetyZone(displayPercent: viewModel.currentDisplayLevelPercent)
+    }
+
+    private var curvePoints: [DecayCurvePoint] {
+        DecayCurve.sample(model: viewModel.model, currentRealPercent: viewModel.currentRealLevelPercent)
+    }
+
+    private var lastDoseValue: String {
+        guard let last = viewModel.injections.last else { return "—" }
+        return "\(Int(last.doseIU)) IU"
+    }
+
+    private var lastDoseSubtitle: String? {
+        guard let last = viewModel.injections.last else { return "No doses yet" }
+        return relativeText(since: last.date)
+    }
+
+    private func relativeText(since date: Date) -> String {
+        let hours = Date().timeIntervalSince(date) / 3600
+        if hours < 1 { return "\(max(0, Int(hours * 60)))min ago" }
+        if hours < 48 { return String(format: "%.1fh ago", hours) }
+        return String(format: "%.1fd ago", hours / 24)
+    }
+
+    // MARK: - Reset (restyled, same confirmation flow as before)
+
+    private var resetButton: some View {
+        Button(role: .destructive) {
+            showResetRealAlert = true
+        } label: {
+            Text("Reset history")
+                .font(AppTextStyle.bodyEmphasis)
+                .foregroundStyle(AppColor.dangerForeground)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+        }
+        .buttonStyle(.plain)
+        .alert(
+            "Clear history and reset the level?",
+            isPresented: $showResetRealAlert
+        ) {
+            Button("Cancel", role: .cancel) {}
+            Button("Reset", role: .destructive) {
+                viewModel.resetAll()
+                lookAheadHours = 0
+            }
+        } message: {
+            Text("This will delete all injections and return the level to baseline.")
+        }
+    }
+
+    private var footnote: some View {
+        Text("Estimates only, based on doses and half-life decay. Zones are informational and not medical advice.")
+            .font(AppTextStyle.caption)
+            .foregroundStyle(AppColor.inkTertiary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .padding(.top, Theme.Spacing.stackGap)
     }
 }
 
-#Preview {
-    HomeView(viewModel: FactorTrackerViewModel())
+#Preview("No stock") {
+    ZStack {
+        AppColor.backgroundGradient.ignoresSafeArea()
+        HomeView(viewModel: FactorTrackerViewModel())
+    }
+}
+
+#Preview("With stock + cover days") {
+    ZStack {
+        AppColor.backgroundGradient.ignoresSafeArea()
+        HomeView(viewModel: FactorTrackerViewModel(), hasStock: true, coverDaysText: "12 days")
+    }
 }
