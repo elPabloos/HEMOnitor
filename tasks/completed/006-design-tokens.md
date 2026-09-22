@@ -1,8 +1,8 @@
 # Task: Design tokens — palette, typography, spacing, glass modifiers
 
-**Status:** active
+**Status:** completed
 **Created:** 2026-09-22
-**Completed:** —
+**Completed:** 2026-09-22
 
 ## Objective
 
@@ -44,10 +44,11 @@ Relevant existing code: `HEMOnitor/Views/SafetyZone.swift` (5-case zone enum, `.
 
 ```bash
 xcodebuild -scheme HEMOnitor -destination 'generic/platform=iOS Simulator' build
+xcodebuild -scheme HEMOnitor -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' test -only-testing:HEMOnitorTests
 ```
 
 - Build: PASS (`** BUILD SUCCEEDED **`)
-- Tests: not yet run in this session (no new tests added by this phase — it's pure design tokens, no logic to unit test; existing test bundles are unchanged templates)
+- Tests: PASS (`** TEST SUCCEEDED **`, `HEMOnitorTests/example()` — this run also exercises `HEMOnitorApp.init()` → `FontRegistrar.registerBundledFontsIfNeeded()` since the test bundle hosts the real app process; no crash/assertion, confirming font registration succeeds at runtime)
 - Manual check: confirmed via `find` that the three `.ttf` files are copied into the built `.app` bundle (fileSystemSynchronizedGroups auto-includes non-Swift resources, so no pbxproj edit was needed for bundling — only the runtime-registration approach was needed to avoid the Info.plist array-key limitation)
 
 ## Notes
