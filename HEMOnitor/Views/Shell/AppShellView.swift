@@ -68,8 +68,20 @@ struct AppShellView: View {
             switch sheet {
             case .calibration:
                 CalibrationView(viewModel: viewModel)
-            case .log, .timeline, .addDelivery:
-                // Real contents arrive with the sheet-system and timeline phases.
+            case .log:
+                LogDoseSheet(
+                    viewModel: viewModel,
+                    stockViewModel: stockViewModel,
+                    onClose: { presentedSheet = nil }
+                )
+            case .addDelivery:
+                AddStockSheet(
+                    stockViewModel: stockViewModel,
+                    defaultProductName: viewModel.productName,
+                    onClose: { presentedSheet = nil }
+                )
+            case .timeline:
+                // Real content arrives with the timeline phase.
                 ComingSoonView(tab: selectedTab)
                     .background(AppColor.backgroundGradient)
             }

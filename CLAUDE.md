@@ -33,6 +33,23 @@ If `test` fails with "Scheme HEMOnitor is not currently configured for the test 
 
 All three target directories are Xcode 16+ `fileSystemSynchronizedGroups` (objectVersion 77): new source files placed under `HEMOnitor/`, `HEMOnitorTests/`, or `HEMOnitorUITests/` are picked up automatically — do not hand-edit `project.pbxproj` to register them.
 
+To change a **build setting** (e.g. `PRODUCT_BUNDLE_IDENTIFIER`), use the Xcode MCP `UpdateTargetBuildSetting` tool rather than editing `project.pbxproj`. It works while Xcode is open, which hand-editing does not — call `XcodeOpenWorkspace` once first to get a `workspaceIdentifier` and to grant access.
+
+## Driving the UI in the simulator
+
+Real taps **are** possible, contrary to what earlier task notes (003) recorded. `osascript`/System Events does fail on Accessibility permissions, but Xcode's own device-interaction tooling works and was used to verify the dose-logging flow end to end in task 015. The sequence:
+
+1. `mcp__xcode__DeviceInteractionStartSession` with a device UUID and a session name.
+2. **Spawn a subagent** that loads the `device-interaction` skill and performs the taps via `DeviceInteractionSynthesize` (passing the session key). The session tool refuses to drive events from the calling agent — this indirection is required, not optional.
+3. `mcp__xcode__DeviceInteractionEndSession` as soon as you're done; holding a session open is expensive.
+
+Two traps worth knowing:
+
+- **Xcode's device list differs from `simctl`'s.** Xcode exposed only iOS 27.0 simulators while `simctl` had been using an iOS 26.5 iPhone 17 Pro, which was *not* selectable. Pick the device from the list `DeviceInteractionStartSession` returns on failure, then `simctl install`/`launch` onto that same UUID.
+- Interactions must choose coordinates from a fresh UI hierarchy dump, never from a screenshot.
+
+To reach a specific app state without tapping through it, seed the persisted store directly: `xcrun simctl get_app_container <udid> <bundle-id> data`, then write `Library/Application Support/app_state.json` (see `AppState`; dates are `millisecondsSince1970`) and relaunch. Note the app must have been launched once first so the container exists.
+
 ## Architecture
 
 MVVM, ~735 lines of Swift in the app target, with no persistence and no networking — all state lives in memory and is lost on relaunch. `HEMOnitorApp` → `ContentView` (owns a `FactorTrackerViewModel` via `@StateObject`) → `CalibrationView`, presented as a sheet and sharing the same view model via `@ObservedObject`.
