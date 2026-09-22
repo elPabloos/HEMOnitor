@@ -14,35 +14,39 @@ final class FactorTrackerViewModel: ObservableObject {
     /// The current DISPLAY level (after applying calibrationFactor), in percent
     @Published private(set) var currentDisplayLevelPercent: Double
 
-    /// When present, injections and calibration parameters are persisted through it.
-    /// Nil for previews/tests that don't need on-disk persistence.
+    /// The factor product these parameters describe (e.g. "Elocta"). Purely
+    /// descriptive — the half-life it implies already lives on `model`.
+    @Published private(set) var productName: String
+
+    /// Whether the onboarding wizard has been completed. Gates the app root.
+    @Published private(set) var hasCompletedOnboarding: Bool
+
+    /// How the current level is rendered on the main screen.
+    @Published var displayStyle: DisplayStyle {
+        didSet { persistSettings() }
+    }
+
+    /// When present, injections, patient parameters and preferences are persisted
+    /// through it. Nil for previews/tests that don't need on-disk persistence.
     private let repository: AppRepository?
 
     // MARK: - Initialization
-    init(
-        weightKg: Double,
-        baselinePercent: Double,
-        halfLifeHours: Double = 19.0
-    ) {
-        let model = FactorVIIIModel(
-            weightKg: weightKg,
-            baselinePercent: baselinePercent,
-            halfLifeHours: halfLifeHours,
-            recoveryPercentPerIUPerKg: 2.0,
-            calibrationFactor: nil
-        )
-        self.model = model
-        self.currentRealLevelPercent = baselinePercent
-        self.currentDisplayLevelPercent = baselinePercent
-        self.repository = nil
+
+    /// In-memory initialization from an explicit settings snapshot — for previews
+    /// and tests. Nothing is persisted.
+    convenience init(settings: AppSettings = .defaultSettings) {
+        self.init(settings: settings, repository: nil)
     }
 
-    /// Persistence-backed initialization: loads patient parameters and the
-    /// injection history saved by `repository`, then persists any further
-    /// injection/calibration change through it.
-    init(repository: AppRepository) {
+    /// Persistence-backed initialization: loads patient parameters, preferences
+    /// and the injection history saved by `repository`, then persists any further
+    /// change through it.
+    convenience init(repository: AppRepository) {
+        self.init(settings: repository.state.settings, repository: repository)
+    }
+
+    private init(settings: AppSettings, repository: AppRepository?) {
         self.repository = repository
-        let settings = repository.state.settings
         self.model = FactorVIIIModel(
             weightKg: settings.weightKg,
             baselinePercent: settings.baselinePercent,
@@ -50,10 +54,38 @@ final class FactorTrackerViewModel: ObservableObject {
             recoveryPercentPerIUPerKg: settings.recoveryPercentPerIUPerKg,
             calibrationFactor: settings.calibrationFactor
         )
-        self.injections = repository.state.injections
+        self.productName = settings.productName
+        self.hasCompletedOnboarding = settings.hasCompletedOnboarding
+        self.displayStyle = settings.displayStyle
+        self.injections = repository?.state.injections ?? []
         self.currentRealLevelPercent = settings.baselinePercent
         self.currentDisplayLevelPercent = settings.baselinePercent
         recalculateLevels()
+    }
+
+    // MARK: - Patient parameters
+
+    /// Updates the patient parameters and persists them. The PK fields live on
+    /// `model`, which stays their single source of truth — `AppSettings` is
+    /// written from it, never the other way round (outside of init).
+    func updatePatientParameters(
+        weightKg: Double? = nil,
+        baselinePercent: Double? = nil,
+        halfLifeHours: Double? = nil,
+        productName: String? = nil
+    ) {
+        if let weightKg { model.weightKg = weightKg }
+        if let baselinePercent { model.baselinePercent = baselinePercent }
+        if let halfLifeHours { model.halfLifeHours = halfLifeHours }
+        if let productName { self.productName = productName }
+        recalculateLevels()
+        persistSettings()
+    }
+
+    /// Marks onboarding as done, so the app root stops showing the wizard.
+    func completeOnboarding() {
+        hasCompletedOnboarding = true
+        persistSettings()
     }
 
     // MARK: - Persistence
@@ -64,13 +96,24 @@ final class FactorTrackerViewModel: ObservableObject {
         repository.updateInjections { $0 = injections }
     }
 
-    private func persistCalibration() {
+    /// Projects the current in-memory state back onto the persisted `AppSettings`.
+    /// Writes every field, so it's correct to call after any settings-affecting
+    /// change (patient parameters, calibration, preferences).
+    private func persistSettings() {
         guard let repository else { return }
-        let recovery = model.recoveryPercentPerIUPerKg
-        let calibrationFactor = model.calibrationFactor
+        let model = model
+        let productName = productName
+        let hasCompletedOnboarding = hasCompletedOnboarding
+        let displayStyle = displayStyle
         repository.updateSettings { settings in
-            settings.recoveryPercentPerIUPerKg = recovery
-            settings.calibrationFactor = calibrationFactor
+            settings.weightKg = model.weightKg
+            settings.baselinePercent = model.baselinePercent
+            settings.halfLifeHours = model.halfLifeHours
+            settings.recoveryPercentPerIUPerKg = model.recoveryPercentPerIUPerKg
+            settings.calibrationFactor = model.calibrationFactor
+            settings.productName = productName
+            settings.hasCompletedOnboarding = hasCompletedOnboarding
+            settings.displayStyle = displayStyle
         }
     }
 
@@ -136,7 +179,7 @@ extension FactorTrackerViewModel {
             timeFromDoseHours: timeFromDoseHours
         )
         recalculateLevels()
-        persistCalibration()
+        persistSettings()
     }
     
     // MARK: - Calibration (B: recovery)
@@ -152,6 +195,6 @@ extension FactorTrackerViewModel {
             timeFromDoseHours: timeFromDoseHours
         )
         recalculateLevels()
-        persistCalibration()
+        persistSettings()
     }
 }

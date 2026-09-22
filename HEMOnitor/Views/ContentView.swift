@@ -29,13 +29,9 @@ struct ContentView: View {
         .publish(every: 60, on: .main, in: .common)
         .autoconnect()
 
-    init(
-        viewModel: FactorTrackerViewModel = FactorTrackerViewModel(
-            weightKg: 65,
-            baselinePercent: 2,
-            halfLifeHours: 19
-        )
-    ) {
+    /// The default is an unpersisted view model built from `AppSettings.defaultSettings`,
+    /// for previews only — the app passes in a repository-backed one.
+    init(viewModel: FactorTrackerViewModel = FactorTrackerViewModel()) {
         _viewModel = StateObject(wrappedValue: viewModel)
     }
 

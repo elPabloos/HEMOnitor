@@ -146,10 +146,7 @@ struct CalibrationView: View {
 
 #Preview {
     // Simple preview with a dummy viewModel
-    let vm = FactorTrackerViewModel(
-        weightKg: 65,
-        baselinePercent: 1,
-        halfLifeHours: 19
-    )
-    return CalibrationView(viewModel: vm)
+    var settings = AppSettings.defaultSettings
+    settings.baselinePercent = 1
+    return CalibrationView(viewModel: FactorTrackerViewModel(settings: settings))
 }
