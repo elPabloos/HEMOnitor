@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+
+# Xcode — build output
+build/
+DerivedData/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# Xcode — per-user state (window layout, breakpoints, scheme selection).
+# Personal to each machine and a constant source of noisy diffs.
+xcuserdata/
+*.xcuserstate
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+Package.resolved
+
+# Claude Code — machine-local settings and agent worktrees.
+# CLAUDE.md and tasks/ are intentionally tracked.
+.claude/settings.local.json
+.claude/worktrees/
