@@ -5,7 +5,7 @@
 
 import Foundation
 
-/// Store în memorie, fără disc — pentru previews și teste.
+/// An in-memory store, no disk — for previews and tests.
 final class InMemoryPersistenceStore: PersistenceStore {
     private var state: AppState
 

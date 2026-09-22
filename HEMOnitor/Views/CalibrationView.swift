@@ -12,110 +12,110 @@ struct CalibrationView: View {
     
     @Environment(\.dismiss) private var dismiss
     
-    // Input-uri din formular
+    // Form inputs
     @State private var doseText: String = ""
     @State private var observedPercentText: String = ""
     @State private var hoursText: String = "0.5"
-    
-    // Opțiunea B (PK): ajustarea recovery-ului
+
+    // Option B (PK): adjust recovery
     @State private var enableRecoveryAdjustment: Bool = false
-    
+
     var body: some View {
         NavigationView {
             Form {
-                // Ghid rapid
+                // Quick guide
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Ce îți trebuie")
+                        Text("What you'll need")
                             .font(.headline)
                         VStack(alignment: .leading, spacing: 6) {
-                            Label("Doza administrată (IU)", systemImage: "checkmark.circle")
-                            Label("Nivel FVIII (%) din laborator", systemImage: "checkmark.circle")
-                            Label("Ore între doză și recoltare", systemImage: "checkmark.circle")
+                            Label("Dose administered (IU)", systemImage: "checkmark.circle")
+                            Label("Lab FVIII level (%)", systemImage: "checkmark.circle")
+                            Label("Hours between dose and draw", systemImage: "checkmark.circle")
                         }
                         .font(.subheadline)
-                        
+
                         Divider().padding(.vertical, 4)
-                        
-                        Text("Cum aleg opțiunea")
+
+                        Text("Choosing an option")
                             .font(.headline)
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("A) Scalare la afișare (recomandat): ajustează doar afișarea, nu schimbă parametrii PK.")
-                            Text("B) Ajustează recovery (parametru PK): modifică cât crește REAL FVIII pentru 1 IU/kg, ca predicția să corespundă analizei. Folosește când vrei ca modelul REAL să te reprezinte mai fidel.")
+                            Text("A) Display scaling (recommended): adjusts only what's shown, doesn't change the PK parameters.")
+                            Text("B) Adjust recovery (PK parameter): changes how much REAL FVIII rises per 1 IU/kg, so the prediction matches the lab result. Use this when you want the REAL model to represent you more faithfully.")
                         }
                         .font(.subheadline)
                         .foregroundColor(.secondary)
-                        
-                        Text("Notă: nu ai nevoie neapărat de o analiză „înainte de doză”. E suficientă o măsurătoare la un anumit număr de ore după o doză cunoscută.")
+
+                        Text("Note: you don't strictly need a \"before dose\" test. A single measurement a known number of hours after a known dose is enough.")
                             .font(.footnote)
                             .foregroundColor(.secondary)
                             .padding(.top, 4)
                     }
                     .padding(.vertical, 4)
                 } header: {
-                    Text("Ghid rapid")
+                    Text("Quick guide")
                 }
-                
-                // Secțiune: intrări din laborator
+
+                // Section: lab inputs
                 Section {
-                    TextField("Doză administrată (IU)", text: $doseText)
+                    TextField("Dose administered (IU)", text: $doseText)
                         .keyboardType(.numberPad)
-                    
-                    TextField("Nivel măsurat FVIII (%)", text: $observedPercentText)
+
+                    TextField("Measured FVIII level (%)", text: $observedPercentText)
                         .keyboardType(.decimalPad)
-                    
-                    TextField("Ore de la injecție până la recoltare",
+
+                    TextField("Hours from injection to draw",
                               text: $hoursText)
                         .keyboardType(.decimalPad)
                 } header: {
-                    Text("Date din analiza de laborator")
+                    Text("Lab result data")
                 } footer: {
-                    Text("Introdu doza administrată, procentul FVIII măsurat și intervalul de timp până la recoltare.")
+                    Text("Enter the dose administered, the measured FVIII percentage, and the time until the draw.")
                 }
-                
-                // Secțiune: Opțiuni de calibrare (explicații A și B)
+
+                // Section: calibration options (explanations for A and B)
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("A) Scalare la afișare (recomandat)")
+                        Text("A) Display scaling (recommended)")
                             .font(.headline)
-                        Text("Potrivește nivelul afișat cu valoarea din laborator, fără a schimba parametrii PK (recovery). Valorile afișate în app vor reflecta mai bine realitatea ta.")
+                        Text("Matches the displayed level to the lab value, without changing the PK parameters (recovery). Values shown in the app will better reflect your reality.")
                             .font(.footnote)
                             .foregroundColor(.secondary)
                     }
                     .padding(.vertical, 4)
-                    
+
                     Toggle(isOn: $enableRecoveryAdjustment) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("B) Ajustează recovery (parametru PK)")
+                            Text("B) Adjust recovery (PK parameter)")
                                 .font(.headline)
-                            Text("Calibrează cât crește nivelul REAL pentru 1 IU/kg, astfel încât predicția modelului să se potrivească măsurării (real). Folosește cu atenție.")
+                            Text("Calibrates how much the REAL level rises per 1 IU/kg, so the model's prediction matches the (real) measurement. Use with care.")
                                 .font(.footnote)
                                 .foregroundColor(.secondary)
                         }
                     }
                 } header: {
-                    Text("Opțiuni de calibrare")
+                    Text("Calibration options")
                 }
-                
-                // Secțiune: acțiune
+
+                // Section: action
                 Section {
-                    Button("Calibrează modelul") {
-                        // Parsing tolerant la virgulă
+                    Button("Calibrate model") {
+                        // Comma-tolerant parsing
                         let dose = Double(doseText.replacingOccurrences(of: ",", with: "."))
                         let observed = Double(observedPercentText.replacingOccurrences(of: ",", with: "."))
                         let hours = Double(hoursText.replacingOccurrences(of: ",", with: ".")) ?? 0.5
-                        
-                        // Validare minimă
+
+                        // Minimal validation
                         guard let dose, let observed, dose > 0, hours >= 0 else { return }
-                        
-                        // Opțiunea A: scalare la afișare (mereu)
+
+                        // Option A: display scaling (always)
                         viewModel.calibrateRecovery(
                             doseIU: dose,
                             observedPeakPercent: observed,
                             timeFromDoseHours: hours
                         )
-                        
-                        // Opțiunea B: ajustare recovery (opțional)
+
+                        // Option B: recovery adjustment (optional)
                         if enableRecoveryAdjustment {
                             viewModel.calibrateRecoveryParameter(
                                 doseIU: dose,
@@ -123,19 +123,19 @@ struct CalibrationView: View {
                                 timeFromDoseHours: hours
                             )
                         }
-                        
-                        // Închidem sheet-ul după calibrare
+
+                        // Dismiss the sheet after calibrating
                         dismiss()
                     }
                     .disabled(doseText.isEmpty || observedPercentText.isEmpty)
                 } footer: {
-                    Text("Ajustarea recovery (B) schimbă parametrul PK folosit la calculul nivelului REAL. Dacă nu ești sigur, lasă doar opțiunea A activă.")
+                    Text("Adjusting recovery (B) changes the PK parameter used to compute the REAL level. If you're not sure, leave only option A on.")
                 }
             }
-            .navigationTitle("Calibrare FVIII")
+            .navigationTitle("FVIII Calibration")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Închide") {
+                    Button("Close") {
                         dismiss()
                     }
                 }
@@ -145,7 +145,7 @@ struct CalibrationView: View {
 }
 
 #Preview {
-    // Preview simplu cu un viewModel dummy
+    // Simple preview with a dummy viewModel
     let vm = FactorTrackerViewModel(
         weightKg: 65,
         baselinePercent: 1,

@@ -5,18 +5,18 @@
 
 import SwiftUI
 
-/// Rezumatul ultimei injecții: doză, timp trecut, nivel înainte/după (afișat).
+/// Summary of the last injection: dose, elapsed time, before/after (display) level.
 struct LastInjectionCard: View {
     let model: FactorVIIIModel
     let lastInjection: InjectionEvent?
 
     var body: some View {
         CardView {
-            Text("Ultima injecție")
+            Text("Last injection")
                 .font(.headline)
 
             if let lastInjection {
-                Text("\(Int(lastInjection.doseIU)) UI")
+                Text("\(Int(lastInjection.doseIU)) IU")
                     .font(.system(size: 28, weight: .bold))
 
                 Text(elapsedText(since: lastInjection.date))
@@ -25,7 +25,7 @@ struct LastInjectionCard: View {
 
                 HStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Înainte")
+                        Text("Before")
                             .font(.caption)
                             .foregroundColor(.secondary)
                         Text(String(
@@ -35,7 +35,7 @@ struct LastInjectionCard: View {
                         .font(.subheadline.bold())
                     }
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("După (peak)")
+                        Text("After (peak)")
                             .font(.caption)
                             .foregroundColor(.secondary)
                         Text(String(
@@ -50,7 +50,7 @@ struct LastInjectionCard: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             } else {
-                Text("Nicio injecție înregistrată încă.")
+                Text("No injection recorded yet.")
                     .foregroundColor(.secondary)
             }
         }
@@ -60,11 +60,11 @@ struct LastInjectionCard: View {
     private func elapsedText(since date: Date) -> String {
         let hours = Date().timeIntervalSince(date) / 3600.0
         if hours < 1 {
-            return String(format: "acum %.0f min", max(0, hours * 60))
+            return String(format: "%.0f min ago", max(0, hours * 60))
         } else if hours < 48 {
-            return String(format: "acum %.1f h", hours)
+            return String(format: "%.1f h ago", hours)
         } else {
-            return String(format: "acum %.1f zile", hours / 24)
+            return String(format: "%.1f days ago", hours / 24)
         }
     }
 }

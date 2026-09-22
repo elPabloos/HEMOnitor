@@ -29,7 +29,7 @@ explicitly overrides them:
 - Do not change calibration behavior (`calibrateRecovery`, `calibrateRecoveryParameter`,
   or their ordering).
 - Do not refactor the MVVM architecture.
-- Keep all user-facing strings and doc comments in Romanian.
+- Keep all user-facing strings and doc comments in English.
 - Do not hand-edit `project.pbxproj`; new sources under the synchronized target
   directories are picked up automatically.
 - Keep the change minimal and scoped to this task.

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-HEMOnitor is a SwiftUI iOS app (iPhone + iPad) that estimates a hemophilia patient's Factor VIII (FVIII) level over time from injection doses and exponential half-life decay. It is a tracking/visualisation aid only — the code explicitly disclaims dosing decisions. User-facing strings and doc comments are written in Romanian; keep new ones in Romanian to match.
+HEMOnitor is a SwiftUI iOS app (iPhone + iPad) that estimates a hemophilia patient's Factor VIII (FVIII) level over time from injection doses and exponential half-life decay. It is a tracking/visualisation aid only — the code explicitly disclaims dosing decisions. User-facing strings and doc comments are written in English; keep new ones in English to match. (The app was originally written in Romanian and translated wholesale in task 009 — if you find stray Romanian text anywhere, it's a leftover, translate it.)
 
 ## Build & test
 

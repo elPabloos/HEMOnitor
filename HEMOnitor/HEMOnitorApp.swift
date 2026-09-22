@@ -9,8 +9,8 @@ import SwiftUI
 
 @main
 struct HEMOnitorApp: App {
-    /// Instanță unică, dată mai departe fiecărui ViewModel care are nevoie de
-    /// persistență, ca toate să scrie în același `AppState`.
+    /// A single instance, handed to every ViewModel that needs persistence, so
+    /// they all write into the same `AppState`.
     private let repository: AppRepository
     @StateObject private var viewModel: FactorTrackerViewModel
 

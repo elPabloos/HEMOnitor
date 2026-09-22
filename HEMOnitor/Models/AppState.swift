@@ -5,8 +5,8 @@
 
 import Foundation
 
-/// Instantaneul complet al datelor persistate ale aplicației — tot ce salvează
-/// `PersistenceStore` într-un singur fișier JSON.
+/// A complete snapshot of the app's persisted data — everything
+/// `PersistenceStore` writes into a single JSON file.
 struct AppState: Codable, Equatable {
     var settings: AppSettings = .defaultSettings
     var injections: [InjectionEvent] = []

@@ -34,9 +34,9 @@ struct Toast: Identifiable, Equatable {
     static func == (lhs: Toast, rhs: Toast) -> Bool { lhs.id == rhs.id }
 }
 
-/// Prezentator simplu pentru toast-uri scurte (confirmări/erori), consumat prin
-/// `.toastHost(_:)`. Fiecare view care are nevoie să afișeze toast-uri își creează
-/// propriul `@StateObject` și îl atașează la ecranul rădăcină al fluxului respectiv.
+/// A simple presenter for short toasts (confirmations/errors), consumed via
+/// `.toastHost(_:)`. Any view that needs to show toasts creates its own
+/// `@StateObject` and attaches it to the root screen of that flow.
 @MainActor
 final class ToastPresenter: ObservableObject {
     @Published private(set) var current: Toast?

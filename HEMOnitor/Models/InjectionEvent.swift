@@ -12,13 +12,13 @@ struct InjectionEvent: Identifiable, Codable, Equatable, Hashable {
     let date: Date
     let doseIU: Double
     
-    /// Nivelul real (necalibrat) estimat chiar înainte de injecție
+    /// The estimated real (uncalibrated) level right before the injection
     let realLevelBefore: Double
-    
-    /// Noul peak real (necalibrat) imediat după injecție
+
+    /// The new real (uncalibrated) peak right after the injection
     let peakRealPercent: Double
-    
-    /// Pentru compatibilitate, peakDate = data injecției
+
+    /// For compatibility, peakDate = the injection date
     var peakDate: Date { date }
 }
 #if DEBUG

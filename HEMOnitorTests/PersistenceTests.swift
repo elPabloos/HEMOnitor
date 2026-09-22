@@ -76,7 +76,7 @@ struct PersistenceTests {
             batches.append(StockBatch(productName: "Elocta", lotNumber: "A1", expiryDate: Date(), vialSizeIU: 1000, quantity: 2))
         }
 
-        // O nouă instanță, citind din același store, trebuie să vadă ambele actualizări.
+        // A fresh instance reading from the same store must see both updates.
         let reloaded = AppRepository(store: backing)
         #expect(reloaded.state.injections.count == 1)
         #expect(reloaded.state.stockBatches.count == 1)

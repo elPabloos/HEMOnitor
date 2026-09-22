@@ -5,9 +5,9 @@
 
 import SwiftUI
 
-/// Zonă de siguranță calculată dintr-un procent AFIȘAT (nu real), folosită doar
-/// pentru codarea vizuală prin culoare a cardurilor. Nu reprezintă o recomandare
-/// clinică — pragurile sunt informative, pentru a face nivelul ușor de scanat.
+/// Safety zone computed from a DISPLAY percentage (not real), used only for
+/// color-coding cards. Not a clinical recommendation — the thresholds are
+/// informational, meant to make the level easy to scan at a glance.
 enum SafetyZone {
     case critical
     case severe
@@ -42,11 +42,11 @@ enum SafetyZone {
 
     var label: String {
         switch self {
-        case .critical: return "Critic"
-        case .severe: return "Sever"
-        case .moderate: return "Moderat"
-        case .safe: return "Sigur"
-        case .high: return "Ridicat"
+        case .critical: return "Critical"
+        case .severe: return "Severe"
+        case .moderate: return "Moderate"
+        case .safe: return "Safe"
+        case .high: return "High"
         }
     }
 }

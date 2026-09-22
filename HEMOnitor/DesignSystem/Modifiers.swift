@@ -28,13 +28,13 @@ private struct GlassCardModifier: ViewModifier {
 }
 
 extension View {
-    /// Cardul „glass" din noul design: fundal translucid + Material, contur subțire, umbră verzuie.
+    /// The "glass" card from the new design: translucent fill + Material, thin border, green-tinted shadow.
     func glassCard(cornerRadius: CGFloat = Theme.Radius.cardLarge, strong: Bool = false, padding: CGFloat = Theme.Spacing.cardPadding) -> some View {
         modifier(GlassCardModifier(cornerRadius: cornerRadius, strong: strong, padding: padding))
     }
 }
 
-/// Buton principal, pill verde, cu umbră CTA — echivalentul butoanelor de acțiune primară din machetă.
+/// Primary button: green pill with a CTA shadow — the mock's primary-action button.
 struct PrimaryPillButtonStyle: ButtonStyle {
     var isDestructive: Bool = false
 
@@ -52,7 +52,7 @@ struct PrimaryPillButtonStyle: ButtonStyle {
     }
 }
 
-/// Buton secundar, pill cu contur, folosit pentru acțiuni de tip "Back"/"Anulează".
+/// Secondary button: outlined pill, used for "Back"/"Cancel"-style actions.
 struct SecondaryPillButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label

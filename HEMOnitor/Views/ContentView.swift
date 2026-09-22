@@ -12,19 +12,19 @@ struct ContentView: View {
     @State private var showingCalibration = false
     @State private var showingHistory = false
 
-    // Doza introdusă de utilizator, în UI (unități internaționale)
+    // User-entered dose, in IU (international units)
     @State private var doseText: String = ""
 
-    // Pragul introdus de utilizator pentru proiecția din NextDoseCard
+    // User-entered threshold for the NextDoseCard projection
     @State private var targetThresholdText: String = ""
 
-    // Simulare timp (doar cu butoane)
+    // Time simulation (buttons only)
     @State private var simulatedOffsetHours: Double = 0
 
-    // Alertă confirmare reset real
+    // Real-reset confirmation alert
     @State private var showResetRealAlert = false
 
-    // Timer: actualizează nivelul la fiecare 60 secunde
+    // Timer: refreshes the level every 60 seconds
     private let timer = Timer
         .publish(every: 60, on: .main, in: .common)
         .autoconnect()
@@ -43,7 +43,7 @@ struct ContentView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 16) {
-                    // Simulare timp – control compact, imediat sub titlu
+                    // Time simulation – compact control, right under the title
                     simulationControlsCard
 
                     let simulatedInfo = simulatedDisplayInfo()
@@ -75,26 +75,26 @@ struct ContentView: View {
                         onViewHistory: { showingHistory = true }
                     )
 
-                    // Buton Reset nivel (real) – la final, sub carduri
+                    // Reset (real) level button – at the end, below the cards
                     Button(role: .destructive) {
                         showResetRealAlert = true
                     } label: {
-                        Text("Reset nivel (real)")
+                        Text("Reset level (real)")
                             .frame(maxWidth: .infinity)
                     }
                     .padding(.vertical, 10)
                     .background(Color.red.opacity(0.1))
                     .cornerRadius(10)
-                    // Alertă de confirmare pentru reset real
-                    .alert("Ștergi istoricul și resetezi nivelul?",
+                    // Confirmation alert for the real reset
+                    .alert("Clear history and reset the level?",
                            isPresented: $showResetRealAlert) {
-                        Button("Anulează", role: .cancel) { }
-                        Button("Resetează", role: .destructive) {
+                        Button("Cancel", role: .cancel) { }
+                        Button("Reset", role: .destructive) {
                             viewModel.resetAll()
                             simulatedOffsetHours = 0
                         }
                     } message: {
-                        Text("Această acțiune va șterge toate injecțiile și va readuce nivelul la baseline.")
+                        Text("This will delete all injections and return the level to baseline.")
                     }
                 }
                 .padding(.horizontal)
@@ -116,10 +116,10 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Doză introdusă de utilizator
+    // MARK: - User-entered dose
 
-    /// Doza validată din câmpul de text, sau nil dacă intrarea nu e utilizabilă.
-    /// Parsing tolerant la virgulă, ca în CalibrationView.
+    /// The validated dose from the text field, or nil if the input isn't usable.
+    /// Comma-tolerant parsing, same as CalibrationView.
     private var parsedDoseIU: Double? {
         let normalized = doseText
             .replacingOccurrences(of: ",", with: ".")
@@ -130,10 +130,10 @@ struct ContentView: View {
         return dose
     }
 
-    /// Mesaj afișat doar când utilizatorul a scris ceva, dar doza nu e validă.
+    /// Shown only once the user has typed something, but the dose isn't valid.
     private var doseValidationMessage: String? {
         guard !doseText.isEmpty, parsedDoseIU == nil else { return nil }
-        return "Introdu o doză validă, mai mare decât 0."
+        return "Enter a valid dose greater than 0."
     }
 
     private func addInjectionFromInput() {
@@ -143,12 +143,12 @@ struct ContentView: View {
         doseText = ""
     }
 
-    // MARK: - Istoric complet (sheet)
+    // MARK: - Full history (sheet)
     private var historySheet: some View {
         NavigationView {
             Group {
                 if viewModel.injections.isEmpty {
-                    Text("Nicio injecție înregistrată încă.")
+                    Text("No injection recorded yet.")
                         .foregroundColor(.secondary)
                         .padding(.top, 32)
                 } else {
@@ -156,16 +156,16 @@ struct ContentView: View {
                         LazyVStack(spacing: 12) {
                             ForEach(viewModel.injections.reversed()) { injection in
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("Doză: \(Int(injection.doseIU)) UI")
+                                    Text("Dose: \(Int(injection.doseIU)) IU")
                                         .font(.headline)
 
                                     Text(String(
-                                        format: "Nivel înainte: %.1f %%",
+                                        format: "Level before: %.1f %%",
                                         injection.realLevelBefore
                                     ))
 
                                     Text(String(
-                                        format: "Peak după: %.1f %%",
+                                        format: "Peak after: %.1f %%",
                                         injection.peakRealPercent
                                     ))
 
@@ -186,10 +186,10 @@ struct ContentView: View {
                     }
                 }
             }
-            .navigationTitle("Istoric injecții")
+            .navigationTitle("Injection history")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Închide") {
+                    Button("Close") {
                         showingHistory = false
                     }
                 }
@@ -197,15 +197,15 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Simulare UI (control compact)
+    // MARK: - Simulation controls (compact)
     private var simulationControlsCard: some View {
         CardView {
             HStack {
-                Text("Simulare timp")
+                Text("Time simulation")
                     .font(.headline)
                 Spacer()
                 if simulatedOffsetHours != 0 {
-                    Button("Reset simulare") {
+                    Button("Reset simulation") {
                         withAnimation { simulatedOffsetHours = 0 }
                     }
                 }
@@ -226,7 +226,7 @@ struct ContentView: View {
         }
     }
 
-    // Returnează "Nd" dacă |offset| >= 24h, altfel nil
+    // Returns "Nd" if |offset| >= 24h, otherwise nil
     private func simulatedDaysText() -> String? {
         let absHours = abs(simulatedOffsetHours)
         let days = Int(absHours / 24.0)
@@ -240,7 +240,7 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Calcul nivel simulat (cu extrapolare înapoi)
+    // MARK: - Simulated level calculation (with backward extrapolation)
     private func simulatedDisplayInfo() -> (displayPercent: Double, simulatedDate: Date) {
         let simulatedDate = Date().addingTimeInterval(simulatedOffsetHours * 3600)
 

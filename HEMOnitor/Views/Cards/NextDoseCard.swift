@@ -5,9 +5,9 @@
 
 import SwiftUI
 
-/// Proiecție pur matematică: timpul până când nivelul curent va ajunge (prin
-/// decădere) la un prag ALES DE UTILIZATOR. Nu este o recomandare de dozaj —
-/// aplicația nu sugerează niciun prag, doar calculează timpul pentru cel introdus.
+/// A purely mathematical projection: the time until the current level decays
+/// down to a threshold CHOSEN BY THE USER. Not a dosing recommendation — the
+/// app never suggests a threshold, it only computes the time to whichever one is entered.
 struct NextDoseCard: View {
     let model: FactorVIIIModel
     let currentRealPercent: Double
@@ -32,15 +32,15 @@ struct NextDoseCard: View {
 
     var body: some View {
         CardView {
-            Text("Proiecție prag")
+            Text("Threshold projection")
                 .font(.headline)
 
-            Text("Introdu un prag (%) și vezi timpul estimat până când nivelul ajunge la acea valoare, pe baza decăderii curente. Nu este o recomandare de dozaj.")
+            Text("Enter a threshold (%) to see the estimated time until the level decays to it. Not a dosing recommendation.")
                 .font(.caption)
                 .foregroundColor(.secondary)
 
             HStack {
-                TextField("Prag (%)", text: $targetText)
+                TextField("Threshold (%)", text: $targetText)
                     .keyboardType(.decimalPad)
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 120)
@@ -62,7 +62,7 @@ struct NextDoseCard: View {
             }
 
             if !targetText.isEmpty, hoursUntilTarget == nil {
-                Text("Pragul trebuie să fie sub nivelul curent și peste valoarea de bază.")
+                Text("The threshold must be below the current level and above the baseline.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -76,7 +76,7 @@ struct NextDoseCard: View {
         } else if hours < 48 {
             return String(format: "%.1f h", hours)
         } else {
-            return String(format: "%.1f zile", hours / 24)
+            return String(format: "%.1f days", hours / 24)
         }
     }
 }

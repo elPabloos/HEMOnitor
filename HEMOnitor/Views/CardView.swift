@@ -5,9 +5,9 @@
 
 import SwiftUI
 
-/// Container reutilizabil pentru secțiunile de tip „card” din ecranul principal:
-/// colțuri rotunjite, umbră discretă și fundal adaptiv (light/dark mode) prin
-/// SwiftUI Material, opțional colorat cu o nuanță (ex. zona de siguranță).
+/// Reusable container for the "card" sections on the main screen: rounded
+/// corners, a subtle shadow, and a light/dark-adaptive background via SwiftUI
+/// Material, optionally tinted (e.g. by safety zone).
 struct CardView<Content: View>: View {
     var tint: Color? = nil
     @ViewBuilder var content: () -> Content

@@ -7,15 +7,15 @@ import SwiftUI
 import CoreText
 import UIKit
 
-/// Înregistrează la runtime fonturile aduse în bundle (Resources/Fonts), fără a
-/// depinde de cheia Info.plist "Fonts provided by application" (UIAppFonts) — acest
-/// proiect folosește un Info.plist generat din build settings, iar chei de tip
-/// array nu pot fi adăugate acolo fără un Info.plist propriu. Înregistrarea prin
-/// CTFontManagerRegisterFontsForURL este echivalentă din punct de vedere funcțional.
+/// Registers the bundled fonts (Resources/Fonts) at runtime, without relying on
+/// the Info.plist "Fonts provided by application" (UIAppFonts) key — this project
+/// uses an Info.plist generated from build settings, and array-valued keys can't be
+/// added there without introducing a standalone Info.plist. Registering via
+/// CTFontManagerRegisterFontsForURL is functionally equivalent.
 enum FontRegistrar {
     private static var didRegister = false
 
-    /// Numele fișierelor (fără extensie) aduse în `Resources/Fonts`.
+    /// The file names (without extension) bundled under `Resources/Fonts`.
     private static let bundledFontFileNames = [
         "PlusJakartaSans[wght]",
         "IBMPlexMono-Regular",
@@ -28,25 +28,25 @@ enum FontRegistrar {
 
         for name in bundledFontFileNames {
             guard let url = Bundle.main.url(forResource: name, withExtension: "ttf") else {
-                assertionFailure("Font lipsă din bundle: \(name).ttf")
+                assertionFailure("Font missing from bundle: \(name).ttf")
                 continue
             }
             var error: Unmanaged<CFError>?
             let ok = CTFontManagerRegisterFontsForURL(url as CFURL, .process, &error)
             if !ok, let error {
                 let nsError = error.takeRetainedValue() as Error as NSError
-                // Deja înregistrat (ex. preview-uri re-rulate) — nu e o eroare reală.
+                // Already registered (e.g. previews re-running) — not a real error.
                 if nsError.code != CTFontManagerError.alreadyRegistered.rawValue {
-                    assertionFailure("Nu am putut înregistra fontul \(name): \(nsError)")
+                    assertionFailure("Could not register font \(name): \(nsError)")
                 }
             }
         }
     }
 }
 
-/// Numele PostScript ale instanțelor de font disponibile după înregistrare.
-/// Plus Jakarta Sans e adus ca variable font; numele instanțelor numite sunt cele
-/// atribuite de Google Fonts (confirmate cu CTFontManagerCreateFontDescriptorsFromURL).
+/// PostScript names of the font instances available after registration.
+/// Plus Jakarta Sans ships as a variable font; the named-instance names are the
+/// ones assigned by Google Fonts (confirmed with CTFontManagerCreateFontDescriptorsFromURL).
 private enum FontName {
     static let jakartaRegular = "PlusJakartaSans-Regular"
     static let jakartaMedium = "PlusJakartaSans-Regular_Medium"
@@ -83,9 +83,9 @@ enum AppFontWeight {
 }
 
 extension Font {
-    /// Plus Jakarta Sans — font de UI/body. Cade automat pe fontul de sistem dacă
-    /// fontul n-a putut fi înregistrat (ex. înainte de primul apel al
-    /// `FontRegistrar.registerBundledFontsIfNeeded()`, sau în teste).
+    /// Plus Jakarta Sans — the UI/body font. Falls back to the system font if the
+    /// font couldn't be registered (e.g. before the first call to
+    /// `FontRegistrar.registerBundledFontsIfNeeded()`, or in tests).
     static func jakarta(_ size: CGFloat, weight: AppFontWeight = .regular) -> Font {
         guard UIFont(name: weight.jakartaName, size: size) != nil else {
             return .system(size: size, weight: weight.systemWeight, design: .rounded)
@@ -93,7 +93,7 @@ extension Font {
         return .custom(weight.jakartaName, size: size)
     }
 
-    /// IBM Plex Mono — folosit pentru toate valorile numerice (doze, procente, ore, loturi).
+    /// IBM Plex Mono — used for all numeric values (doses, percentages, times, lot numbers).
     static func plexMono(_ size: CGFloat, weight: AppFontWeight = .regular) -> Font {
         let name = weight == .medium || weight == .semiBold || weight == .bold || weight == .extraBold
             ? FontName.plexMonoMedium
@@ -105,7 +105,7 @@ extension Font {
     }
 }
 
-/// Stiluri text semantice, dimensionate după machetă.
+/// Semantic text styles, sized to match the mock.
 enum AppTextStyle {
     static var largeNumeral: Font { .jakarta(82, weight: .extraBold) }
     static var largeNumeralXL: Font { .jakarta(132, weight: .extraBold) }

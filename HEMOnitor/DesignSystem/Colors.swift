@@ -9,7 +9,7 @@ import UIKit
 #endif
 
 private extension Color {
-    /// Culoare dinamică light/dark, fără a depinde de Asset Catalog color sets.
+    /// A dynamic light/dark color, without depending on Asset Catalog color sets.
     init(light: Color, dark: Color) {
         #if canImport(UIKit)
         self = Color(UIColor { traits in
@@ -28,10 +28,10 @@ private extension Color {
     }
 }
 
-/// Paleta de culori a noului design ("Mobile app design project"), cu o variantă
-/// dark adăugată pentru a păstra suportul dark mode pe care aplicația îl are azi
-/// prin Material. Machetele originale sunt doar light — valorile dark de mai jos
-/// sunt derivate pentru contrast, nu preluate 1:1 din machetă.
+/// The new design's color palette ("Mobile app design project"), plus a dark
+/// variant added to preserve the dark-mode support the app gets today via
+/// Material. The original mocks are light-only — the dark values below are
+/// derived for contrast, not taken 1:1 from the mock.
 enum AppColor {
     // MARK: Fundal
 
@@ -47,7 +47,7 @@ enum AppColor {
         )
     }
 
-    // MARK: Text / cerneală
+    // MARK: Text / ink
 
     static let ink = Color(light: Color(hex: 0x16231B), dark: Color(hex: 0xEAF1E7))
     static let inkSecondary = ink.opacity(0.64)
@@ -76,7 +76,7 @@ enum AppColor {
     static let glassFillStrong = Color(light: Color.white.opacity(0.85), dark: Color.white.opacity(0.12))
     static let glassBorder = Color(light: Color.white.opacity(0.85), dark: Color.white.opacity(0.16))
 
-    // MARK: Stări
+    // MARK: States
 
     static let warningBackground = Color(light: Color(hex: 0xFFF7E8, opacity: 0.85), dark: Color(hex: 0x2A2110, opacity: 0.85))
     static let warningForeground = Color(light: Color(hex: 0x7D5A1C), dark: Color(hex: 0xE0B667))

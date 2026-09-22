@@ -5,11 +5,11 @@
 
 import SwiftUI
 
-/// Constante de spațiere, raze de colț și umbre pentru noul limbaj vizual,
-/// preluate din machetele de design (paleta glass/pill din "Mobile app design project").
+/// Spacing, corner-radius and shadow constants for the new visual language,
+/// taken from the design mocks (the glass/pill palette in "Mobile app design project").
 enum Theme {
     enum Spacing {
-        /// Gutter-ul standard de ecran.
+        /// The standard screen gutter.
         static let screenGutter: CGFloat = 22
         static let cardPadding: CGFloat = 18
         static let cardPaddingCompact: CGFloat = 14
@@ -59,7 +59,7 @@ enum Theme {
 }
 
 extension View {
-    /// Umbra difuză, verzuie, folosită sub carduri/butoane în noul design.
+    /// The soft, green-tinted shadow used under cards/buttons in the new design.
     func themeShadow(_ style: Theme.ShadowStyle) -> some View {
         shadow(color: style.color, radius: style.radius, x: style.offset.width, y: style.offset.height)
     }

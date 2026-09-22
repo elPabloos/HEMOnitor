@@ -5,9 +5,9 @@
 
 import SwiftUI
 
-/// Cardul principal: nivelul curent estimat (sau simulat), colorat după zona
-/// de siguranță, cu indicator clar când datele afișate sunt dintr-o simulare
-/// de timp și nu din starea reală curentă.
+/// The main card: the current estimated (or simulated) level, colored by
+/// safety zone, with a clear indicator when the displayed data is from a
+/// time simulation rather than the real current state.
 struct CurrentLevelCard: View {
     let realDisplayPercent: Double
     let isSimulated: Bool
@@ -24,11 +24,11 @@ struct CurrentLevelCard: View {
     var body: some View {
         CardView(tint: zone.color) {
             HStack {
-                Text(isSimulated ? "Nivel simulat" : "Nivel curent estimat")
+                Text(isSimulated ? "Simulated level" : "Estimated current level")
                     .font(.headline)
                 Spacer()
                 if isSimulated {
-                    Label("Mod simulare", systemImage: "clock.arrow.circlepath")
+                    Label("Simulation mode", systemImage: "clock.arrow.circlepath")
                         .font(.caption.bold())
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
@@ -54,19 +54,19 @@ struct CurrentLevelCard: View {
             }
 
             if isSimulated {
-                Text("Ora simulată: \(simulatedDate.formatted(date: .abbreviated, time: .shortened))")
+                Text("Simulated time: \(simulatedDate.formatted(date: .abbreviated, time: .shortened))")
                     .font(.caption)
                     .foregroundColor(.secondary)
             } else {
-                Text("Valoare estimată pe baza dozelor și a timpului de înjumătățire. Nu înlocuiește analizele de laborator.")
+                Text("Estimated from doses and half-life decay. Not a substitute for lab tests.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            (isSimulated ? "Nivel simulat" : "Nivel curent estimat") +
-            String(format: ", %.1f procente, zonă %@", shownPercent, zone.label)
+            (isSimulated ? "Simulated level" : "Estimated current level") +
+            String(format: ", %.1f percent, %@ zone", shownPercent, zone.label)
         )
     }
 }

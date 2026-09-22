@@ -5,12 +5,11 @@
 
 import Foundation
 
-/// Persistență pe disc, ca JSON, sub directorul Application Support.
-/// Scrierea e atomică (`Data.write(options: .atomic)`, care scrie mai întâi
-/// într-un fișier temporar și apoi redenumește) ca să nu rămână un fișier
-/// corupt dacă aplicația e omorâtă în timpul scrierii. Dacă fișierul lipsește
-/// sau nu poate fi decodat (prima rulare, sau un fișier vechi/corupt), se
-/// întoarce silențios la `AppState()` (valorile implicite).
+/// On-disk persistence, as JSON, under the Application Support directory.
+/// Writes are atomic (`Data.write(options: .atomic)`, which writes to a temp
+/// file first and then renames) so no corrupt file is left behind if the app is
+/// killed mid-write. If the file is missing or can't be decoded (first launch,
+/// or an old/corrupt file), it silently falls back to `AppState()` (the defaults).
 final class FileManagerPersistenceStore: PersistenceStore {
     private let fileURL: URL
     private let encoder: JSONEncoder
@@ -45,13 +44,13 @@ final class FileManagerPersistenceStore: PersistenceStore {
 
     func save(_ state: AppState) {
         guard let data = try? encoder.encode(state) else {
-            assertionFailure("Nu am putut coda starea aplicației pentru salvare")
+            assertionFailure("Could not encode the app state for saving")
             return
         }
         do {
             try data.write(to: fileURL, options: .atomic)
         } catch {
-            assertionFailure("Nu am putut salva starea aplicației: \(error)")
+            assertionFailure("Could not save the app state: \(error)")
         }
     }
 }

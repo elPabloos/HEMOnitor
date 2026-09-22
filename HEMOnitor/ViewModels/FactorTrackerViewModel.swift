@@ -2,23 +2,23 @@ import Foundation
 import Combine
 
 final class FactorTrackerViewModel: ObservableObject {
-    /// Modelul farmacocinetic și parametrii pacientului
+    /// The pharmacokinetic model and patient parameters
     @Published var model: FactorVIIIModel
-    
-    /// Istoricul injecțiilor
+
+    /// The injection history
     @Published private(set) var injections: [InjectionEvent] = []
-    
-    /// Nivelul curent REAL (necalibrat), în procente
+
+    /// The current REAL (uncalibrated) level, in percent
     @Published private(set) var currentRealLevelPercent: Double
-    
-    /// Nivelul curent de AFIȘAT (după aplicarea calibrationFactor), în procente
+
+    /// The current DISPLAY level (after applying calibrationFactor), in percent
     @Published private(set) var currentDisplayLevelPercent: Double
 
-    /// Dacă e prezent, injecțiile și parametrii de calibrare se persistă prin el.
-    /// Nil pentru previews/teste care nu au nevoie de persistență pe disc.
+    /// When present, injections and calibration parameters are persisted through it.
+    /// Nil for previews/tests that don't need on-disk persistence.
     private let repository: AppRepository?
 
-    // MARK: - Inițializare
+    // MARK: - Initialization
     init(
         weightKg: Double,
         baselinePercent: Double,
@@ -37,9 +37,9 @@ final class FactorTrackerViewModel: ObservableObject {
         self.repository = nil
     }
 
-    /// Inițializare susținută de persistență: încarcă parametrii pacientului și
-    /// istoricul injecțiilor salvate de `repository`, apoi persistă orice
-    /// modificare ulterioară a injecțiilor/calibrării prin el.
+    /// Persistence-backed initialization: loads patient parameters and the
+    /// injection history saved by `repository`, then persists any further
+    /// injection/calibration change through it.
     init(repository: AppRepository) {
         self.repository = repository
         let settings = repository.state.settings
@@ -56,7 +56,7 @@ final class FactorTrackerViewModel: ObservableObject {
         recalculateLevels()
     }
 
-    // MARK: - Persistență
+    // MARK: - Persistence
 
     private func persistInjections() {
         guard let repository else { return }
@@ -74,7 +74,7 @@ final class FactorTrackerViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Recalculare niveluri
+    // MARK: - Level recalculation
     func recalculateLevels(at date: Date = Date()) {
         guard let last = injections.last else {
             currentRealLevelPercent = model.baselinePercent
@@ -90,7 +90,7 @@ final class FactorTrackerViewModel: ObservableObject {
         currentDisplayLevelPercent = model.displayLevel(fromRealPercent: real)
     }
     
-    // MARK: - Injecții
+    // MARK: - Injections
     func addInjection(doseIU: Double, at date: Date = Date()) {
         recalculateLevels(at: date)
         let levelBefore = currentRealLevelPercent
@@ -114,7 +114,7 @@ final class FactorTrackerViewModel: ObservableObject {
         persistInjections()
     }
 
-    // MARK: - Resetare totală (șterge istoricul și revine la baseline)
+    // MARK: - Full reset (clears history and returns to baseline)
     func resetAll() {
         injections.removeAll()
         currentRealLevelPercent = model.baselinePercent
@@ -124,7 +124,7 @@ final class FactorTrackerViewModel: ObservableObject {
 }
 
 extension FactorTrackerViewModel {
-    // MARK: - Calibrare (A: factor de afișare)
+    // MARK: - Calibration (A: display factor)
     func calibrateRecovery(
         doseIU: Double,
         observedPeakPercent: Double,
@@ -139,8 +139,8 @@ extension FactorTrackerViewModel {
         persistCalibration()
     }
     
-    // MARK: - Calibrare (B: recovery)
-    /// Ajustează recovery astfel încât nivelul REAL prezis să corespundă observației.
+    // MARK: - Calibration (B: recovery)
+    /// Adjusts recovery so the predicted REAL level matches the observation.
     func calibrateRecoveryParameter(
         doseIU: Double,
         observedDisplayPercent: Double,

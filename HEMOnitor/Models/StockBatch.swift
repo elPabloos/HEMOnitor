@@ -5,8 +5,8 @@
 
 import Foundation
 
-/// Un lot de flacoane aflat în stoc. Folosit de ecranul Stock (fază ulterioară);
-/// modelul e introdus acum ca parte a stratului de persistență.
+/// A batch of vials held in stock. Used by the Stock screen (a later phase);
+/// the model is introduced now as part of the persistence layer.
 struct StockBatch: Codable, Equatable, Identifiable {
     let id: UUID
     var productName: String

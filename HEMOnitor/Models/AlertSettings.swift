@@ -5,8 +5,8 @@
 
 import Foundation
 
-/// Preferințele de alertare pe scăderea nivelului. Folosite de ecranul Alerts
-/// (fază ulterioară); modelul e introdus acum ca parte a stratului de persistență.
+/// Preferences for level-crossing alerts. Used by the Alerts screen (a later
+/// phase); the model is introduced now as part of the persistence layer.
 struct AlertSettings: Codable, Equatable {
     var remindersEnabled: Bool = false
     var crossingThresholdPercent: Double = 15
@@ -14,6 +14,6 @@ struct AlertSettings: Codable, Equatable {
     var missedDoseFollowUpEnabled: Bool = false
     var missedDoseFollowUpHours: Double = 4
 
-    /// Identificatorii `UNNotificationRequest` programate curent, ca să poată fi anulate/reprogramate.
+    /// Identifiers of the currently scheduled `UNNotificationRequest`s, so they can be cancelled/rescheduled.
     var scheduledAlertIdentifiers: [String] = []
 }

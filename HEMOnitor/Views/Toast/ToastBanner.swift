@@ -48,7 +48,7 @@ private struct ToastHostModifier: ViewModifier {
 }
 
 extension View {
-    /// Atașează un overlay de toast în partea de sus a ecranului, condus de `presenter`.
+    /// Attaches a toast overlay at the top of the screen, driven by `presenter`.
     func toastHost(_ presenter: ToastPresenter) -> some View {
         modifier(ToastHostModifier(presenter: presenter))
     }
@@ -57,8 +57,8 @@ extension View {
 #Preview {
     let presenter = ToastPresenter()
     return VStack {
-        Button("Arată succes") { presenter.show("Injecție adăugată", kind: .success) }
-        Button("Arată eroare") { presenter.show("Nu ai suficiente flacoane", kind: .error) }
+        Button("Show success") { presenter.show("Injection added", kind: .success) }
+        Button("Show error") { presenter.show("Not enough vials in stock", kind: .error) }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(AppColor.backgroundGradient)

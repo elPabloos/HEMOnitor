@@ -5,8 +5,8 @@
 
 import SwiftUI
 
-/// Cardul de acțiuni rapide: introducere doză (singurul punct de intrare spre
-/// addInjection), deschidere calibrare, și vizualizare istoric complet.
+/// The quick-actions card: dose entry (the sole entry point to addInjection),
+/// opening calibration, and viewing the full history.
 struct QuickActionsCard: View {
     @Binding var doseText: String
     let parsedDoseIU: Double?
@@ -17,16 +17,16 @@ struct QuickActionsCard: View {
 
     var body: some View {
         CardView {
-            Text("Acțiuni rapide")
+            Text("Quick actions")
                 .font(.headline)
 
             VStack(spacing: 8) {
                 HStack(spacing: 12) {
-                    TextField("Doză (UI)", text: $doseText)
+                    TextField("Dose (IU)", text: $doseText)
                         .keyboardType(.decimalPad)
                         .textFieldStyle(.roundedBorder)
 
-                    Button("Adaugă injecție", action: onAddInjection)
+                    Button("Add injection", action: onAddInjection)
                         .padding(.vertical, 8)
                         .padding(.horizontal, 12)
                         .background(Color.blue.opacity(0.1))
@@ -42,14 +42,14 @@ struct QuickActionsCard: View {
                 }
             }
 
-            Button("Calibrare după analize", action: onCalibrate)
+            Button("Calibrate from lab results", action: onCalibrate)
                 .padding(.vertical, 8)
                 .padding(.horizontal, 12)
                 .frame(maxWidth: .infinity)
                 .background(Color.green.opacity(0.1))
                 .cornerRadius(10)
 
-            Button("Vezi tot istoricul", action: onViewHistory)
+            Button("View full history", action: onViewHistory)
                 .padding(.vertical, 8)
                 .padding(.horizontal, 12)
                 .frame(maxWidth: .infinity)

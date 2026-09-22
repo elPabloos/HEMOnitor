@@ -5,13 +5,12 @@
 
 import Foundation
 
-/// Punct unic de acces la starea persistată a aplicației. `HEMOnitorApp`
-/// construiește o singură instanță și o dă mai departe fiecărui ViewModel care
-/// are nevoie de persistență, astfel încât toate să scrie în același
-/// `AppState` — altfel un `save` naiv per-ViewModel ar suprascrie datele
-/// celorlalte. Nu e `ObservableObject`: fiecare ViewModel rămâne sursa de
-/// adevăr pentru propriile `@Published`, `AppRepository` e doar un serviciu
-/// de persistență la nivel de Model.
+/// The single access point to the app's persisted state. `HEMOnitorApp` builds
+/// one instance and hands it to every ViewModel that needs persistence, so they
+/// all write into the same `AppState` — otherwise a naive per-ViewModel `save`
+/// would clobber the others' data. Deliberately not an `ObservableObject`: each
+/// ViewModel remains the source of truth for its own `@Published` state, and
+/// `AppRepository` is just a Model-layer persistence service.
 final class AppRepository {
     private let store: PersistenceStore
     private(set) var state: AppState

@@ -5,16 +5,16 @@
 
 import Foundation
 
-/// Stilul de afișare a nivelului curent pe ecranul principal.
+/// How the current level is displayed on the main screen.
 enum DisplayStyle: String, Codable, CaseIterable {
     case ring
     case numeral
     case curve
 }
 
-/// Parametrii pacientului și preferințele aplicației, persistate pe disc.
-/// Corespunde câmpurilor de pe `FactorVIIIModel` plus preferințe care nu țin
-/// de calculul PK (onboarding, stil de afișare).
+/// Patient parameters and app preferences, persisted to disk.
+/// Mirrors the fields on `FactorVIIIModel` plus preferences unrelated to the
+/// PK calculation (onboarding, display style).
 struct AppSettings: Codable, Equatable {
     var weightKg: Double
     var baselinePercent: Double
@@ -25,7 +25,7 @@ struct AppSettings: Codable, Equatable {
     var hasCompletedOnboarding: Bool
     var displayStyle: DisplayStyle
 
-    /// Valorile folosite azi ca literali hardcodați în `ContentView.init` (65kg/2%/19h, Elocta).
+    /// The values currently hardcoded as literals in `ContentView.init` (65kg/2%/19h, Elocta).
     static let defaultSettings = AppSettings(
         weightKg: 65,
         baselinePercent: 2,
