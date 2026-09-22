@@ -21,7 +21,7 @@ struct CalibrationView: View {
     @State private var enableRecoveryAdjustment: Bool = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 // Quick guide
                 Section {

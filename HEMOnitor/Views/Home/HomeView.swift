@@ -1,5 +1,5 @@
 //
-//  ContentView.swift
+//  HomeView.swift
 //  HEMOnitor
 //
 //  Created by Ciudin, Paul-Catalin on 05.08.2025.
@@ -7,8 +7,10 @@
 
 import SwiftUI
 
-struct ContentView: View {
-    @StateObject private var viewModel: FactorTrackerViewModel
+struct HomeView: View {
+    /// Owned by `HEMOnitorApp` and passed down through `AppShellView` — observed
+    /// here, not owned, so switching tabs away and back doesn't disturb it.
+    @ObservedObject var viewModel: FactorTrackerViewModel
     @State private var showingCalibration = false
     @State private var showingHistory = false
 
@@ -29,14 +31,8 @@ struct ContentView: View {
         .publish(every: 60, on: .main, in: .common)
         .autoconnect()
 
-    /// The default is an unpersisted view model built from `AppSettings.defaultSettings`,
-    /// for previews only — the app passes in a repository-backed one.
-    init(viewModel: FactorTrackerViewModel = FactorTrackerViewModel()) {
-        _viewModel = StateObject(wrappedValue: viewModel)
-    }
-
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
                     // Time simulation – compact control, right under the title
@@ -141,7 +137,7 @@ struct ContentView: View {
 
     // MARK: - Full history (sheet)
     private var historySheet: some View {
-        NavigationView {
+        NavigationStack {
             Group {
                 if viewModel.injections.isEmpty {
                     Text("No injection recorded yet.")
@@ -269,5 +265,5 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    HomeView(viewModel: FactorTrackerViewModel())
 }

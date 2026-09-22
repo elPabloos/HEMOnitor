@@ -23,7 +23,7 @@ struct HEMOnitorApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(viewModel: viewModel)
+            AppShellView(viewModel: viewModel)
         }
     }
 }
