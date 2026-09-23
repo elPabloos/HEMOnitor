@@ -33,6 +33,10 @@ struct CustomTabBar: View {
         }
         .clipShape(Capsule())
         .themeShadow(.ambientCard)
+        // The bar is a fixed-height pill with four labels side by side; letting the
+        // accessibility steps loose in here shreds it. Labels are duplicated by each
+        // item's accessibility label, which VoiceOver reads at any size.
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .accessibilityElement(children: .contain)
     }
 
@@ -53,6 +57,8 @@ struct CustomTabBar: View {
                 Text(tab.title)
                     .font(.jakarta(11, weight: .bold))
                     .foregroundStyle(isSelected ? AppColor.primaryGreen : AppColor.inkSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
             .frame(maxWidth: .infinity)
             // 54pt clears the 44pt minimum hit target with room to spare.

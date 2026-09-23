@@ -35,7 +35,7 @@ struct StockHeroCard: View {
                 .foregroundStyle(.white.opacity(0.78))
 
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("\(Int(totalIU))")
+                Text(totalIU.wholeNumberText)
                     .font(.plexMono(44, weight: .extraBold))
                     .foregroundStyle(.white)
                 Text("IU · \(totalVialCount) \(vialsSuffix)")

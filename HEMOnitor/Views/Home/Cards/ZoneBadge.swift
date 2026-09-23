@@ -21,19 +21,26 @@ struct ZoneBadge: View {
         }
     }
 
+    /// At accessibility sizes the dot/label/note row can't stay on one line — it used
+    /// to overflow the capsule and hyphenate mid-word ("protecti / ve"). The note
+    /// moves below the label instead.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(zone.color)
-                .frame(width: 8, height: 8)
-            Text(zone.label)
-                .font(AppTextStyle.bodyEmphasis)
-                .foregroundStyle(zone.color)
-            Text("·")
-                .foregroundStyle(AppColor.inkTertiary)
-            Text(note)
-                .font(AppTextStyle.caption)
-                .foregroundStyle(AppColor.inkSecondary)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    labelRow
+                    noteText
+                }
+            } else {
+                HStack(spacing: 8) {
+                    labelRow
+                    Text("·")
+                        .foregroundStyle(AppColor.inkTertiary)
+                    noteText
+                }
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -46,6 +53,25 @@ struct ZoneBadge: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(zone.label) zone, \(note)")
+    }
+
+    private var labelRow: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(zone.color)
+                .frame(width: 8, height: 8)
+            Text(zone.label)
+                .font(AppTextStyle.bodyEmphasis)
+                .foregroundStyle(zone.color)
+        }
+    }
+
+    private var noteText: some View {
+        Text(note)
+            .font(AppTextStyle.caption)
+            .foregroundStyle(AppColor.inkSecondary)
+            // Wrap between words rather than letting the capsule clip mid-word.
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

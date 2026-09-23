@@ -42,16 +42,24 @@ struct LevelVisualization: View {
         Text("estimated plasma factor")
             .font(AppTextStyle.caption)
             .foregroundStyle(AppColor.inkSecondary)
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+            .minimumScaleFactor(0.8)
     }
 
     private func numeralText(_ size: CGFloat, percentSize: CGFloat) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 2) {
-            Text("\(Int(displayPercent.rounded()))")
+            Text(displayPercent.wholeNumberText)
                 .font(.jakarta(size, weight: .extraBold))
             Text("%")
                 .font(.jakarta(percentSize, weight: .extraBold))
         }
         .foregroundStyle(AppColor.ink)
+        .lineLimit(1)
+        // The numeral is already 82–132pt; at accessibility sizes it bursts straight
+        // out of the ring. Shrinking to fit keeps the reading legible and the
+        // geometry intact.
+        .minimumScaleFactor(0.5)
     }
 
     private var ringBody: some View {
@@ -67,6 +75,12 @@ struct LevelVisualization: View {
                 numeralText(82, percentSize: 28)
                 caption
             }
+            .padding(.horizontal, 28)
+            // The ring is a fixed 250pt circle, so its contents cannot scale without
+            // bound. Capping below the accessibility sizes (they still get the full
+            // XXXL step) keeps the number inside the circle; VoiceOver users get the
+            // combined label above, which is unaffected by this cap.
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         }
         .frame(width: 250, height: 250)
         .accessibilityElement(children: .combine)
@@ -77,6 +91,11 @@ struct LevelVisualization: View {
             numeralText(132, percentSize: 40)
             caption
         }
+        .padding(.horizontal, Theme.Spacing.screenGutter)
+        // 132pt is already near the screen width; the accessibility steps would take
+        // it well past it, and `minimumScaleFactor` alone would shrink it back to
+        // roughly this size anyway.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .frame(minHeight: 250)
         .accessibilityElement(children: .combine)
     }
@@ -84,6 +103,7 @@ struct LevelVisualization: View {
     private var curveBody: some View {
         VStack(spacing: 10) {
             numeralText(84, percentSize: 24)
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             caption
 
             DecayCurveChart(points: curvePoints, color: zone.color)
@@ -128,6 +148,10 @@ struct LevelVisualization: View {
                 .background {
                     Capsule().fill(isSelected ? AppColor.primaryGreen : .clear)
                 }
+                // The pill stays 40x32 for the design; the *tappable* area is padded
+                // out to the 44pt minimum, which the visual alone did not meet.
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(label) style")

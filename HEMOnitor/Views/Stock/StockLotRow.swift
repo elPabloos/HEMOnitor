@@ -17,7 +17,7 @@ struct StockLotRow: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.stackGap) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(Int(batch.vialSizeIU)) IU")
+                    Text("\(batch.vialSizeIU.wholeNumberText) IU")
                         .font(.jakarta(17, weight: .extraBold))
                         .foregroundStyle(AppColor.ink)
 
@@ -42,7 +42,7 @@ struct StockLotRow: View {
             HStack {
                 ExpiryBadge(expiryDate: batch.expiryDate)
                 Spacer()
-                Text("\(Int(totalIU)) IU total")
+                Text("\(totalIU.wholeNumberText) IU total")
                     .font(AppTextStyle.monoLabel)
                     .foregroundStyle(AppColor.inkSecondary)
             }
