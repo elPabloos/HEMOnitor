@@ -207,7 +207,7 @@ struct TimelineScaleLabels: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             ForEach(labels, id: \.percent) { label in
-                Text("\(Int(label.percent))%")
+                Text("\(label.percent.wholeNumberText)%")
                     .font(.plexMono(10, weight: .bold))
                     .foregroundStyle(label.color)
                     // Sits just above its own reference line rather than centred on

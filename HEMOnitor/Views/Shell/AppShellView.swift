@@ -47,6 +47,7 @@ struct AppShellView: View {
                     // `completeOnboarding()` has already flipped and persisted the
                     // flag by the time this fires, so the Group re-evaluates itself.
                 }
+                .readableWidth()
             }
         }
         .background(AppColor.backgroundGradient.ignoresSafeArea())
@@ -64,8 +65,10 @@ struct AppShellView: View {
                 .safeAreaInset(edge: .bottom) {
                     Color.clear.frame(height: barClearance)
                 }
+                .readableWidth()
 
             bar
+                .readableWidth()
         }
         .onAppear {
             syncConsumptionEstimate()
@@ -97,6 +100,8 @@ struct AppShellView: View {
         }
         .fullScreenCover(isPresented: $showingTimeline) {
             TimelineView(viewModel: viewModel, onClose: { showingTimeline = false })
+                .readableWidth()
+                .background(AppColor.backgroundGradient.ignoresSafeArea())
         }
     }
 

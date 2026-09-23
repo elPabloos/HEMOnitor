@@ -58,7 +58,7 @@ struct AddStockSheet: View {
                         Button {
                             vialSizeIU = size
                         } label: {
-                            Text("\(Int(size))")
+                            Text(size.wholeNumberText)
                                 .font(.plexMono(14, weight: .bold))
                                 .foregroundStyle(selected ? .white : AppColor.ink)
                                 .padding(.horizontal, 16)

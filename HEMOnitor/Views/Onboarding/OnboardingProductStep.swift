@@ -41,7 +41,7 @@ struct OnboardingProductStep: View {
 
                 Spacer()
 
-                Text("\(Int(product.halfLifeHours))h")
+                Text("\(product.halfLifeHours.wholeNumberText)h")
                     .font(.plexMono(16, weight: .bold))
                     .foregroundStyle(AppColor.primaryGreen)
             }

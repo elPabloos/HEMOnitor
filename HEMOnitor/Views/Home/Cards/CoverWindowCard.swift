@@ -58,7 +58,7 @@ struct CoverWindowCard: View {
                     .font(AppTextStyle.headline)
                     .foregroundStyle(AppColor.ink)
                 Spacer()
-                Text("\(Int(model.halfLifeHours))h half-life")
+                Text("\(model.halfLifeHours.wholeNumberText)h half-life")
                     .font(AppTextStyle.monoLabel)
                     .foregroundStyle(AppColor.inkSecondary)
             }
@@ -113,7 +113,7 @@ struct CoverWindowCard: View {
                 // Counted from the instant being previewed, so the headline stays
                 // consistent with the level shown above it.
                 let crossDate = asOf.addingTimeInterval(hoursUntilThreshold * 3600)
-                Text("Below \(Int(referenceDisplayPercent))% around \(crossDate.formatted(date: .abbreviated, time: .shortened))")
+                Text("Below \(referenceDisplayPercent.wholeNumberText)% around \(crossDate.formatted(date: .abbreviated, time: .shortened))")
                     .font(AppTextStyle.headline)
                     .foregroundStyle(AppColor.ink)
                 Text(relativeDurationText(hoursUntilThreshold))

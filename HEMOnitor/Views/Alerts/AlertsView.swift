@@ -69,7 +69,7 @@ struct AlertsView: View {
                     .font(AppTextStyle.caption)
                     .foregroundStyle(AppColor.inkSecondary)
                 Spacer()
-                Text("\(Int(viewModel.settings.crossingThresholdPercent))%")
+                Text("\(viewModel.settings.crossingThresholdPercent.wholeNumberText)%")
                     .font(.plexMono(20, weight: .bold))
                     .foregroundStyle(AppColor.primaryGreen)
             }

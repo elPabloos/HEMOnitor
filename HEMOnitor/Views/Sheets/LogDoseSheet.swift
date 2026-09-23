@@ -92,7 +92,7 @@ struct LogDoseSheet: View {
         let count = vialCounts[batch.id] ?? 0
         return HStack(spacing: Theme.Spacing.stackGap) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(Int(batch.vialSizeIU)) IU")
+                Text("\(batch.vialSizeIU.wholeNumberText) IU")
                     .font(.jakarta(15, weight: .bold))
                     .foregroundStyle(AppColor.ink)
                 Text("lot \(batch.lotNumber) · \(batch.quantity) available")

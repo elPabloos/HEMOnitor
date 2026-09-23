@@ -52,7 +52,7 @@ struct RecentActivityCard: View {
                 }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(Int(injection.doseIU)) IU")
+                Text("\(injection.doseIU.wholeNumberText) IU")
                     .font(AppTextStyle.bodyEmphasis)
                     .foregroundStyle(AppColor.ink)
                 Text(relativeText(for: injection.date))
@@ -62,7 +62,7 @@ struct RecentActivityCard: View {
 
             Spacer()
 
-            Text("\(Int(model.displayLevel(fromRealPercent: injection.peakRealPercent).rounded()))%")
+            Text("\(model.displayLevel(fromRealPercent: injection.peakRealPercent).wholeNumberText)%")
                 .font(AppTextStyle.monoValue)
                 .foregroundStyle(AppColor.inkSecondary)
         }
