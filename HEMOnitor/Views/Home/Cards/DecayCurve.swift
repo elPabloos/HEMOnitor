@@ -40,4 +40,19 @@ enum DecayCurve {
             return DecayCurvePoint(hoursFromNow: hours, displayPercent: display)
         }
     }
+
+    /// The real level `hoursAhead` from now, decayed from the current level.
+    ///
+    /// This is what the Home "look ahead" slider projects: at 0 it is simply the
+    /// current level, so Home renders "now" unchanged. Same memoryless-decay
+    /// justification as `sample(...)` above, and the same single call into
+    /// `FactorVIIIModel` — no PK math lives here.
+    static func projectedRealPercent(
+        model: FactorVIIIModel,
+        currentRealPercent: Double,
+        hoursAhead: Double
+    ) -> Double {
+        guard hoursAhead > 0 else { return currentRealPercent }
+        return model.levelAtTime(peakPercent: currentRealPercent, hoursSincePeak: hoursAhead)
+    }
 }

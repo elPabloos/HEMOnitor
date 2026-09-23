@@ -191,7 +191,9 @@ final class FactorTrackerViewModel: ObservableObject {
                 peakRealPercent: model.newPeakAfterAdditionalDose(
                     doseIU: event.doseIU,
                     currentRealLevelPercent: realLevelBefore
-                )
+                ),
+                lot: event.lot,
+                productName: event.productName
             )
         }
 
@@ -200,7 +202,15 @@ final class FactorTrackerViewModel: ObservableObject {
 
     /// Records an injection. `date` may be in the past: the event is spliced into
     /// chronological position and every later event is recomputed on top of it.
-    func addInjection(doseIU: Double, at date: Date = Date()) {
+    ///
+    /// `lot` and `productName` are provenance only — they never affect the chain, and
+    /// are carried through rebuilds untouched.
+    func addInjection(
+        doseIU: Double,
+        at date: Date = Date(),
+        lot: String? = nil,
+        productName: String? = nil
+    ) {
         let index = insertionIndex(for: date)
         injections.insert(
             InjectionEvent(
@@ -209,7 +219,9 @@ final class FactorTrackerViewModel: ObservableObject {
                 doseIU: doseIU,
                 // Placeholders; recomputeChain fills in the real values below.
                 realLevelBefore: model.baselinePercent,
-                peakRealPercent: model.baselinePercent
+                peakRealPercent: model.baselinePercent,
+                lot: lot,
+                productName: productName
             ),
             at: index
         )
@@ -234,7 +246,11 @@ final class FactorTrackerViewModel: ObservableObject {
                 doseIU: doseIU ?? existing.doseIU,
                 // Placeholders; recomputeChain fills in the real values below.
                 realLevelBefore: model.baselinePercent,
-                peakRealPercent: model.baselinePercent
+                peakRealPercent: model.baselinePercent,
+                // Provenance survives an edit — re-dating a dose doesn't change which
+                // vial it came from.
+                lot: existing.lot,
+                productName: existing.productName
             ),
             at: newIndex
         )

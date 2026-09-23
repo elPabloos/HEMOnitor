@@ -1,8 +1,42 @@
 # Task: Fix unresponsive onboarding buttons
 
-**Status:** active
+**Status:** closed — not reproducible (no code change needed)
 **Created:** 2026-09-23
-**Completed:** —
+**Completed:** 2026-09-23
+
+## Resolution
+
+**The onboarding controls were never broken.** The simulator itself was frozen and
+accepting no input for any app, which is what the original report actually captured.
+
+Verified on 2026-09-23 on a freshly erased iPhone 18 Pro (iOS 27.0) simulator with a
+clean install, driving real taps through `DeviceInteractionSynthesize` and reading the
+resulting UI hierarchy (not screenshots) to confirm state actually changed:
+
+| Control | Result |
+|---|---|
+| Weight `+` stepper | 65 → 66 |
+| Baseline tier "Severe" | selection moved off "Moderate" |
+| "Continue" (step 1) | advanced to step 2 |
+| Product "Adynovi" | became selected |
+| "Back" (step 2) | returned to step 1, 66 kg / Severe preserved |
+
+Steps 3 → Home and persistence-across-relaunch were left to the user's tap-through,
+per the verification split in CLAUDE.md.
+
+Also confirmed while investigating: **first launch correctly lands on onboarding.**
+`AppSettings.defaultSettings` has `hasCompletedOnboarding: false`
+(`HEMOnitor/Models/AppSettings.swift:36`) and `AppShellView` gates on it
+(`HEMOnitor/Views/Shell/AppShellView.swift:39`). This is the desired behaviour and
+was never removed.
+
+**Lesson for future sessions:** before diagnosing "the view is wired to nothing,"
+confirm the simulator is alive — tap any system UI, or re-erase and reboot the device.
+A frozen simulator is indistinguishable from dead button wiring in a screenshot.
+
+---
+
+*Original report follows, kept for the record.*
 
 ## Objective
 

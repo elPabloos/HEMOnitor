@@ -52,7 +52,7 @@ struct HomeView: View {
 
                 VStack(spacing: Theme.Spacing.stackGap) {
                     LevelVisualization(
-                        displayPercent: viewModel.currentDisplayLevelPercent,
+                        displayPercent: projectedDisplayPercent,
                         zone: zone,
                         style: viewModel.displayStyle,
                         curvePoints: curvePoints,
@@ -65,7 +65,8 @@ struct HomeView: View {
 
                 CoverWindowCard(
                     model: viewModel.model,
-                    currentRealPercent: viewModel.currentRealLevelPercent,
+                    currentRealPercent: projectedRealPercent,
+                    asOf: previewDate,
                     lookAheadHours: $lookAheadHours
                 )
 
@@ -110,12 +111,34 @@ struct HomeView: View {
 
     // MARK: - Derived display state
 
+    /// The instant Home is rendering. The look-ahead slider moves this forward from
+    /// now; at 0 it *is* now, so the default view is unchanged.
+    private var previewDate: Date {
+        Date().addingTimeInterval(lookAheadHours * 3600)
+    }
+
+    /// Everything on this screen — the big level, the zone, the curve and the cover
+    /// window — reads "as of" `previewDate` rather than as of now. That is what makes
+    /// the slider actually do something: without it, dragging would change a caption
+    /// inside one card and nothing else.
+    private var projectedRealPercent: Double {
+        DecayCurve.projectedRealPercent(
+            model: viewModel.model,
+            currentRealPercent: viewModel.currentRealLevelPercent,
+            hoursAhead: lookAheadHours
+        )
+    }
+
+    private var projectedDisplayPercent: Double {
+        viewModel.model.displayLevel(fromRealPercent: projectedRealPercent)
+    }
+
     private var zone: SafetyZone {
-        SafetyZone(displayPercent: viewModel.currentDisplayLevelPercent)
+        SafetyZone(displayPercent: projectedDisplayPercent)
     }
 
     private var curvePoints: [DecayCurvePoint] {
-        DecayCurve.sample(model: viewModel.model, currentRealPercent: viewModel.currentRealLevelPercent)
+        DecayCurve.sample(model: viewModel.model, currentRealPercent: projectedRealPercent)
     }
 
     private var lastDoseValue: String {

@@ -29,10 +29,14 @@ struct AppShellView: View {
     /// Height reserved at the bottom so scrolling content clears the floating bar.
     private let barClearance: CGFloat = 86
 
+    /// Timeline is deliberately not one of these: it is a full-screen destination
+    /// rather than a sheet, so it gets its own presentation state.
     private enum ShellSheet: String, Identifiable {
-        case log, calibration, timeline, addDelivery
+        case log, calibration, addDelivery
         var id: String { rawValue }
     }
+
+    @State private var showingTimeline = false
 
     var body: some View {
         Group {
@@ -89,11 +93,10 @@ struct AppShellView: View {
                     defaultProductName: viewModel.productName,
                     onClose: { presentedSheet = nil }
                 )
-            case .timeline:
-                // Real content arrives with the timeline phase.
-                ComingSoonView(tab: selectedTab)
-                    .background(AppColor.backgroundGradient)
             }
+        }
+        .fullScreenCover(isPresented: $showingTimeline) {
+            TimelineView(viewModel: viewModel, onClose: { showingTimeline = false })
         }
     }
 
@@ -117,7 +120,7 @@ struct AppShellView: View {
         case .you:
             YouView(
                 viewModel: viewModel,
-                onOpenTimeline: { presentedSheet = .timeline },
+                onOpenTimeline: { showingTimeline = true },
                 onCalibrate: { presentedSheet = .calibration }
             )
         }

@@ -45,6 +45,8 @@ struct YouView: View {
                 )
 
                 resetSection
+
+                AppVersionFootnote()
             }
             .padding(.horizontal, Theme.Spacing.screenGutter)
             .padding(.top, Theme.Spacing.screenGutter)

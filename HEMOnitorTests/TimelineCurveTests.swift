@@ -1,0 +1,193 @@
+//
+//  TimelineCurveTests.swift
+//  HEMOnitorTests
+//
+
+import Testing
+import Foundation
+@testable import HEMOnitor
+
+struct TimelineCurveTests {
+
+    // MARK: - Fixtures
+
+    /// A fixed clock keeps day-boundary maths deterministic. Midday avoids the case
+    /// where "now" sits within rounding distance of midnight.
+    private var now: Date {
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 9
+        components.day = 23
+        components.hour = 12
+        return Calendar.current.date(from: components)!
+    }
+
+    private func model() -> FactorVIIIModel {
+        FactorVIIIModel(weightKg: 65, baselinePercent: 2, halfLifeHours: 19)
+    }
+
+    private func injection(daysAgo: Double, doseIU: Double = 3000, peak: Double = 94) -> InjectionEvent {
+        InjectionEvent(
+            id: UUID(),
+            date: now.addingTimeInterval(-daysAgo * 86_400),
+            doseIU: doseIU,
+            realLevelBefore: 2,
+            peakRealPercent: peak
+        )
+    }
+
+    private func isClose(_ a: Double, _ b: Double, _ tolerance: Double = 1e-9) -> Bool {
+        abs(a - b) < tolerance
+    }
+
+    // MARK: - Range
+
+    @Test func rangeFloorsAtSevenDaysWhenHistoryIsShort() {
+        let range = TimelineCurve.range(injections: [injection(daysAgo: 1)], now: now)
+        #expect(range.dayCount == 7)
+    }
+
+    @Test func rangeFloorsAtSevenDaysWhenThereIsNoHistory() {
+        let range = TimelineCurve.range(injections: [], now: now)
+        #expect(range.dayCount == 7)
+    }
+
+    @Test func rangeSpansFromTheOldestInjection() {
+        let range = TimelineCurve.range(
+            injections: [injection(daysAgo: 21), injection(daysAgo: 3)],
+            now: now
+        )
+        // 21 days back through today, inclusive of both endpoints.
+        #expect(range.dayCount == 22)
+    }
+
+    @Test func rangeStartsAtMidnightOfTheOldestDay() {
+        let range = TimelineCurve.range(injections: [injection(daysAgo: 10)], now: now)
+        #expect(range.start == Calendar.current.startOfDay(for: range.start))
+    }
+
+    @Test func rangeProducesOneDayPerColumn() {
+        let range = TimelineCurve.range(injections: [injection(daysAgo: 12)], now: now)
+        #expect(range.days().count == range.dayCount)
+    }
+
+    // MARK: - Sampling
+
+    @Test func sampleReturnsRequestedNumberOfPoints() {
+        let range = TimelineCurve.range(injections: [injection(daysAgo: 5)], now: now)
+        let points = TimelineCurve.sample(
+            injections: [injection(daysAgo: 5)],
+            model: model(),
+            range: range,
+            now: now,
+            sampleCount: 240
+        )
+        // Inclusive of both ends.
+        #expect(points.count == 241)
+    }
+
+    @Test func sampleSpansTheFullWidth() {
+        let range = TimelineCurve.range(injections: [injection(daysAgo: 5)], now: now)
+        let points = TimelineCurve.sample(
+            injections: [injection(daysAgo: 5)],
+            model: model(),
+            range: range,
+            now: now
+        )
+        #expect(isClose(points.first!.xFraction, 0))
+        #expect(isClose(points.last!.xFraction, 1))
+    }
+
+    @Test func levelSitsAtBaselineBeforeAnyInjection() {
+        let event = injection(daysAgo: 2)
+        let level = TimelineCurve.realLevel(
+            at: now.addingTimeInterval(-5 * 86_400),
+            injections: [event],
+            model: model()
+        )
+        #expect(isClose(level, 2))
+    }
+
+    @Test func levelEqualsPeakAtTheMomentOfInjection() {
+        let event = injection(daysAgo: 2, peak: 94)
+        let level = TimelineCurve.realLevel(at: event.date, injections: [event], model: model())
+        #expect(isClose(level, 94))
+    }
+
+    @Test func levelDecaysByHalfOverOneHalfLife() {
+        let event = injection(daysAgo: 2, peak: 94)
+        let oneHalfLifeLater = event.date.addingTimeInterval(19 * 3600)
+        let level = TimelineCurve.realLevel(
+            at: oneHalfLifeLater,
+            injections: [event],
+            model: model()
+        )
+        // Only the infused component halves; baseline is the floor it decays toward.
+        #expect(isClose(level, 2 + (94 - 2) * 0.5))
+    }
+
+    @Test func laterInjectionTakesOverFromEarlierOne() {
+        let older = injection(daysAgo: 4, peak: 50)
+        let newer = injection(daysAgo: 1, peak: 90)
+        let level = TimelineCurve.realLevel(
+            at: newer.date,
+            injections: [older, newer],
+            model: model()
+        )
+        #expect(isClose(level, 90))
+    }
+
+    @Test func samplingIsClampedAtNowRatherThanForecastingForward() {
+        // The range runs to midnight tonight, so the last samples are after `now`.
+        // They must hold the current level rather than continue decaying.
+        let event = injection(daysAgo: 0.5, peak: 80)
+        let range = TimelineCurve.range(injections: [event], now: now)
+        let points = TimelineCurve.sample(
+            injections: [event],
+            model: model(),
+            range: range,
+            now: now
+        )
+
+        let levelAtNow = TimelineCurve.realLevel(at: now, injections: [event], model: model())
+        #expect(isClose(points.last!.displayPercent, levelAtNow, 1e-6))
+    }
+
+    @Test func calibrationScalesDisplayedValuesOnly() {
+        let event = injection(daysAgo: 1, peak: 50)
+        var calibrated = model()
+        calibrated.calibrationFactor = 2
+
+        let range = TimelineCurve.range(injections: [event], now: now)
+        let plain = TimelineCurve.sample(injections: [event], model: model(), range: range, now: now)
+        let scaled = TimelineCurve.sample(injections: [event], model: calibrated, range: range, now: now)
+
+        for (a, b) in zip(plain, scaled) {
+            #expect(isClose(b.displayPercent, a.displayPercent * 2, 1e-6))
+        }
+    }
+
+    // MARK: - Vertical scale
+
+    @Test func oneHundredSixtyPercentSitsAtTheTopOfTheScale() {
+        let y = TimelineCurve.y(forPercent: 160, height: 266, topInset: 14, bottomInset: 14)
+        #expect(isClose(Double(y), 14))
+    }
+
+    @Test func zeroPercentSitsOnTheBaseline() {
+        let y = TimelineCurve.y(forPercent: 0, height: 266, topInset: 14, bottomInset: 14)
+        #expect(isClose(Double(y), 252))
+    }
+
+    @Test func percentagesAboveTheScaleAreClampedNotClipped() {
+        let overshoot = TimelineCurve.y(forPercent: 400, height: 266, topInset: 14, bottomInset: 14)
+        let top = TimelineCurve.y(forPercent: 160, height: 266, topInset: 14, bottomInset: 14)
+        #expect(isClose(Double(overshoot), Double(top)))
+    }
+
+    @Test func higherPercentagesSitHigherOnScreen() {
+        let low = TimelineCurve.y(forPercent: 15, height: 266, topInset: 14, bottomInset: 14)
+        let high = TimelineCurve.y(forPercent: 100, height: 266, topInset: 14, bottomInset: 14)
+        #expect(high < low)
+    }
+}
