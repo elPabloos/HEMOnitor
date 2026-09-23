@@ -45,6 +45,8 @@ struct YouView: View {
                 )
 
                 resetSection
+
+                versionFootnote
             }
             .padding(.horizontal, Theme.Spacing.screenGutter)
             .padding(.top, Theme.Spacing.screenGutter)
@@ -53,6 +55,19 @@ struct YouView: View {
         .sheet(isPresented: $showingEditSheet) {
             ProfileEditSheet(viewModel: viewModel)
         }
+    }
+
+    // MARK: - Version
+
+    /// Identifies the running build, so a bug found while testing on a real phone can
+    /// be pinned to the task that produced it.
+    private var versionFootnote: some View {
+        Text(AppVersion.displayString)
+            .font(AppTextStyle.monoLabel)
+            .foregroundStyle(AppColor.inkTertiary)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.top, Theme.Spacing.stackGapSmall)
+            .accessibilityLabel("App version \(AppVersion.shortVersion), build \(AppVersion.buildNumber), task \(AppVersion.latestTask)")
     }
 
     // MARK: - Display style

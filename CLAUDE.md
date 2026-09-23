@@ -14,18 +14,24 @@ Xcode project, no dependency manager (no `Package.swift`, `Podfile`, or `Fastfil
 # Build the app
 xcodebuild -scheme HEMOnitor -destination 'generic/platform=iOS Simulator' build
 
-# Run tests (verified green on an iOS 26.5 simulator)
-xcodebuild -scheme HEMOnitor -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+# Run tests. Don't hard-code a device name — the installed runtimes change, and a
+# stale name fails with a wall of "doesn't match deployment target" lines. Pick the
+# newest booted/available simulator that satisfies the 17.5 floor:
+UDID=$(xcrun simctl list devices available -j \
+  | python3 -c 'import json,sys;d=json.load(sys.stdin)["devices"];rt=sorted([k for k in d if "iOS" in k and d[k]],key=lambda k:[int(n) for n in k.split("iOS-")[-1].split("-")])[-1];print(d[rt][0]["udid"])')
+xcodebuild -scheme HEMOnitor -destination "platform=iOS Simulator,id=$UDID" test
 
 # Narrow the run: one bundle, or one Swift Testing test
 xcodebuild ... -only-testing:HEMOnitorTests test
 xcodebuild ... -only-testing:HEMOnitorTests/HEMOnitorTests/example() test
 ```
 
-Building and testing both work on this machine as of 2026-08-12; the two blockers previously recorded here are resolved. `xcodebuild ... test` against an iOS 26.5 simulator (e.g. `iPhone 17 Pro`) reports `** TEST SUCCEEDED **`. What was fixed, in case either regresses:
+Building and testing both work on this machine; the two blockers previously recorded here are resolved. `xcodebuild ... test` reports `** TEST SUCCEEDED **` (last confirmed 2026-09-23 on an iOS 27.0 iPhone 18 Pro).
+
+**Never name a specific simulator model or OS version.** The installed runtimes change underneath you — CLAUDE.md previously pinned `iPhone 17 Pro` / iOS 26.5 and by 2026-09-23 neither existed, so every `test` invocation failed with a screenful of "doesn't match deployment target" lines that look like a project fault and aren't. Resolve a UDID at run time with the snippet above, or pass `-destination 'generic/platform=iOS Simulator'` when you only need to build. What was fixed, in case either regresses:
 
 1. **Deployment-target mismatch (resolved).** `@testable import HEMOnitor` used to fail because the app target's `IPHONEOS_DEPLOYMENT_TARGET` (18.6) was higher than the test targets' (18.5). The app target is now 17.5, so the test min (18.5) is ≥ the app min and the import compiles with no `IPHONEOS_DEPLOYMENT_TARGET=` override. The three targets are still not fully aligned (app 17.5, tests 18.5, project default 18.5) — benign for `@testable import`, but align them if you want it tidy. Do **not** hand-edit `project.pbxproj` while Xcode is open (a harness hook blocks it and it can crash Xcode); change project settings in Xcode or ask the user.
-2. **Simulator runtime (resolved).** An iOS 26.5 runtime is installed (iPhone 17 Pro / 17 / Air, iPad Pro/Air/mini, etc.), so an eligible destination exists. If you land on a machine with only the older runtimes (15.2 / 17.2 / 17.4 / 17.5) again, install one with `xcodebuild -downloadPlatform iOS`. The `platform=macOS,variant=Designed for iPad` destination is *not* a workaround — the test targets have no `DEVELOPMENT_TEAM` and code signing fails.
+2. **Simulator runtime (resolved).** A current iOS runtime is installed alongside the legacy ones (15.2 / 17.2 / 17.4 / 17.5), so an eligible destination exists — the app's floor is 17.5 and the old runtimes do not satisfy it. If none does, install one with `xcodebuild -downloadPlatform iOS`. The `platform=macOS,variant=Designed for iPad` destination is *not* a workaround — the test targets have no `DEVELOPMENT_TEAM` and code signing fails.
 
 If `test` fails with "Scheme HEMOnitor is not currently configured for the test action", the shared scheme has lost its `<Testables>` block — restore it with `git checkout HEAD -- HEMOnitor.xcodeproj/xcshareddata/xcschemes/HEMOnitor.xcscheme`.
 
@@ -34,6 +40,24 @@ If `test` fails with "Scheme HEMOnitor is not currently configured for the test 
 All three target directories are Xcode 16+ `fileSystemSynchronizedGroups` (objectVersion 77): new source files placed under `HEMOnitor/`, `HEMOnitorTests/`, or `HEMOnitorUITests/` are picked up automatically — do not hand-edit `project.pbxproj` to register them.
 
 To change a **build setting** (e.g. `PRODUCT_BUNDLE_IDENTIFIER`), use the Xcode MCP `UpdateTargetBuildSetting` tool rather than editing `project.pbxproj`. It works while Xcode is open, which hand-editing does not — call `XcodeOpenWorkspace` once first to get a `workspaceIdentifier` and to grant access.
+
+## Versioning
+
+The You screen shows the running build at the bottom — `Version 1.0 (2) · 018-timeline`
+— so a bug found while testing on a real phone can be pinned to the task that produced
+it. `AppVersion` (`HEMOnitor/Models/AppVersion.swift`) reads the version and build from
+the bundle, so they can't drift from what was actually built.
+
+**Every task merged into `main` gets a new build.** Two steps, both required:
+
+1. Bump `CURRENT_PROJECT_VERSION` on the `HEMOnitor` target. Use the Xcode MCP
+   `UpdateTargetBuildSetting` tool — *not* a hand-edit of `project.pbxproj`, which is
+   blocked by a hook while Xcode is open.
+2. Set `AppVersion.latestTask` to the task's slug (matching its file in
+   `tasks/completed/`).
+
+Leave `MARKETING_VERSION` alone unless the user asks for a version bump; the build
+number is what distinguishes one task's build from the next.
 
 ## Who verifies what
 
@@ -59,7 +83,8 @@ Four traps, all hit in practice:
 
 - **`StartSession` tells you to spawn a subagent that loads a `device-interaction` skill. That skill is frequently not resolvable** — one agent found it, two later ones could not, and stalled. Tell the subagent up front to ignore that instruction and drive the `mcp__xcode__DeviceInteraction*` tools directly from their schemas.
 - **Don't open the session in the parent and hand the key down.** It doesn't survive the subagent being resumed ("Session not found"). Let the subagent open its own.
-- **Xcode's device list differs from `simctl`'s.** Xcode exposed only iOS 27.0 simulators while `simctl` had been using an iOS 26.5 iPhone 17 Pro, which was *not* selectable. Pick a device from the list `StartSession` returns on failure, then `simctl install`/`launch` onto that same UUID.
+- **Xcode's device list can differ from `simctl`'s.** Xcode has exposed only the newest runtime while `simctl` was happily using an older one that Xcode would not select. Pick a device from the list `StartSession` returns on failure, then `simctl install`/`launch` onto that same UUID.
+- **There is no working drag/swipe command.** `t <x> <y>` taps; every plausible spelling of a drag (`d`, `s`, `sw`, `swipe`, `p`, `dr`) is rejected as an invalid command, and the error points at a `device-interaction` skill that is usually unresolvable. Two separate sessions have burned tokens rediscovering this. Consequence: **controls that need a drag — sliders especially — cannot be exercised by the agent at all.** Verify their logic with unit tests over a pure function and hand the gesture itself to the user.
 - **Coordinates must come from a fresh UI hierarchy dump**, never from the screenshot. `Synthesize` returns paths to both; `interactionCommand` is a short string (`t <x> <y>` to tap), and omitting it just captures current state.
 
 To reach a specific app state without tapping through it, seed the persisted store directly: `xcrun simctl get_app_container <udid> <bundle-id> data`, then write `Library/Application Support/app_state.json` (see `AppState`; dates are `millisecondsSince1970`) and relaunch. Note the app must have been launched once first so the container exists.
