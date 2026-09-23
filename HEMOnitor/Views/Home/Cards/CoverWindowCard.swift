@@ -6,18 +6,29 @@
 import SwiftUI
 
 /// The "cover window" card: a headline projecting when the level crosses a
-/// fixed reference threshold, plus a "look ahead" slider (0...72h, forward
-/// only) that previews a later point on the same decay curve.
+/// fixed reference threshold, plus the "look ahead" slider (0...72h, forward only).
+///
+/// **The slider does not belong to this card.** It drives the whole Home screen:
+/// `HomeView` owns the offset, projects the level once, and hands the result to the
+/// ring/numeral/curve, the zone badge and this card alike — so dragging it moves the
+/// big number, not just a line of text down here. This card only renders the control
+/// and reports the instant being previewed.
 ///
 /// All math stays in real space until the final `displayLevel`/`realPercent`
-/// conversion, matching CLAUDE.md's real vs. display split. The look-ahead
-/// preview reuses `FactorVIIIModel.levelAtTime` directly — the old
-/// `HomeView.simulatedDisplayInfo()` hand-rolled a *backwards* decay branch
-/// because it supported negative offsets; since this slider is forward-only
-/// (0...72h), that branch isn't needed here.
+/// conversion, matching CLAUDE.md's real vs. display split. The projection itself is
+/// `DecayCurve.projectedRealPercent`, a pure function over
+/// `FactorVIIIModel.levelAtTime` — forward-only, so the backwards-decay branch the
+/// old `HomeView.simulatedDisplayInfo()` hand-rolled is still not needed.
 struct CoverWindowCard: View {
     let model: FactorVIIIModel
+
+    /// The real level **at `asOf`**, already projected by the caller. The whole Home
+    /// screen renders as of that instant, so this card must not project again.
     let currentRealPercent: Double
+
+    /// The instant the card is reporting on: now, or now + the look-ahead offset.
+    let asOf: Date
+
     @Binding var lookAheadHours: Double
 
     /// Fixed reference level: the boundary between "moderate" and "severe"
@@ -33,15 +44,11 @@ struct CoverWindowCard: View {
         )
     }
 
-    private var previewDate: Date? {
-        guard lookAheadHours > 0 else { return nil }
-        return Date().addingTimeInterval(lookAheadHours * 3600)
-    }
+    private var isPreviewing: Bool { lookAheadHours > 0 }
 
-    private var previewDisplayPercent: Double? {
-        guard lookAheadHours > 0 else { return nil }
-        let real = model.levelAtTime(peakPercent: currentRealPercent, hoursSincePeak: lookAheadHours)
-        return model.displayLevel(fromRealPercent: real)
+    /// "Now" or "+12h", mirroring the mock's badge beside the slider.
+    private var lookAheadLabel: String {
+        isPreviewing ? "+\(Int(lookAheadHours))h" : "Now"
     }
 
     var body: some View {
@@ -59,12 +66,22 @@ struct CoverWindowCard: View {
             headline
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Look ahead")
-                    .font(AppTextStyle.caption)
-                    .foregroundStyle(AppColor.inkSecondary)
+                HStack {
+                    Text("Look ahead")
+                        .font(AppTextStyle.caption)
+                        .foregroundStyle(AppColor.inkSecondary)
+                    Spacer()
+                    Text(lookAheadLabel)
+                        .font(AppTextStyle.monoValue)
+                        .foregroundStyle(AppColor.primaryGreen)
+                        .contentTransition(.numericText())
+                        .animation(.easeOut(duration: 0.12), value: lookAheadHours)
+                }
 
                 Slider(value: $lookAheadHours, in: 0...72, step: 1)
                     .tint(AppColor.primaryGreen)
+                    .accessibilityLabel("Look ahead")
+                    .accessibilityValue(isPreviewing ? "\(Int(lookAheadHours)) hours ahead" : "Now")
 
                 HStack {
                     Text("Now")
@@ -78,8 +95,10 @@ struct CoverWindowCard: View {
                 .font(AppTextStyle.monoLabel)
                 .foregroundStyle(AppColor.inkTertiary)
 
-                if let previewDate, let previewDisplayPercent {
-                    Text("Previewing \(previewDate.formatted(date: .abbreviated, time: .shortened)) · \(Int(previewDisplayPercent.rounded()))%")
+                if isPreviewing {
+                    // The level shown above the card is already the projected one, so
+                    // this names the moment rather than repeating the number.
+                    Text("Previewing \(asOf.formatted(date: .abbreviated, time: .shortened))")
                         .font(AppTextStyle.caption)
                         .foregroundStyle(AppColor.primaryGreen)
                 }
@@ -91,7 +110,9 @@ struct CoverWindowCard: View {
     private var headline: some View {
         VStack(alignment: .leading, spacing: 4) {
             if let hoursUntilThreshold {
-                let crossDate = Date().addingTimeInterval(hoursUntilThreshold * 3600)
+                // Counted from the instant being previewed, so the headline stays
+                // consistent with the level shown above it.
+                let crossDate = asOf.addingTimeInterval(hoursUntilThreshold * 3600)
                 Text("Below \(Int(referenceDisplayPercent))% around \(crossDate.formatted(date: .abbreviated, time: .shortened))")
                     .font(AppTextStyle.headline)
                     .foregroundStyle(AppColor.ink)
@@ -120,8 +141,13 @@ struct CoverWindowCard: View {
 #Preview {
     let model = FactorVIIIModel(weightKg: 65, baselinePercent: 2, halfLifeHours: 19)
     return VStack {
-        CoverWindowCard(model: model, currentRealPercent: 40, lookAheadHours: .constant(0))
-        CoverWindowCard(model: model, currentRealPercent: 40, lookAheadHours: .constant(24))
+        CoverWindowCard(model: model, currentRealPercent: 40, asOf: Date(), lookAheadHours: .constant(0))
+        CoverWindowCard(
+            model: model,
+            currentRealPercent: 14,
+            asOf: Date().addingTimeInterval(24 * 3600),
+            lookAheadHours: .constant(24)
+        )
     }
     .padding()
     .background(AppColor.backgroundGradient)
