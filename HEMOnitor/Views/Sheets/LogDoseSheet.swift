@@ -248,8 +248,37 @@ struct LogDoseSheet: View {
             }
         }
 
-        viewModel.addInjection(doseIU: doseIU, at: date)
+        viewModel.addInjection(
+            doseIU: doseIU,
+            at: date,
+            lot: loggedLot,
+            productName: loggedProductName
+        )
         onClose()
+    }
+
+    /// The lot recorded against the injection, so the Timeline can show which vials a
+    /// dose came from. A dose drawn from several lots lists them all; a manual dose has
+    /// no lot at all.
+    private var loggedLot: String? {
+        guard source == .stock else { return nil }
+        let lots = stockViewModel.batches
+            .filter { (vialCounts[$0.id] ?? 0) > 0 }
+            .map(\.lotNumber)
+        guard !lots.isEmpty else { return nil }
+        return lots.joined(separator: ", ")
+    }
+
+    /// Recorded per-injection rather than read from settings at render time, so
+    /// switching products later doesn't retroactively relabel old doses.
+    private var loggedProductName: String? {
+        guard source == .stock else { return viewModel.productName }
+        let products = Set(
+            stockViewModel.batches
+                .filter { (vialCounts[$0.id] ?? 0) > 0 }
+                .map(\.productName)
+        )
+        return products.count == 1 ? products.first : viewModel.productName
     }
 }
 

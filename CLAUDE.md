@@ -68,7 +68,9 @@ To reach a specific app state without tapping through it, seed the persisted sto
 
 MVVM, with local persistence and no networking. Everything the user enters — patient settings, injection history, stock batches, alert preferences — is saved to a single JSON file (`app_state.json`) under Application Support, and reloaded at launch. See "Persistence" below.
 
-`HEMOnitorApp` owns one `AppRepository` plus a `FactorTrackerViewModel` and a `StockViewModel` built against it, and roots at `AppShellView`. That shell shows `OnboardingView` until onboarding is done, then a four-tab layout (`HomeView`, `StockView`, Alerts placeholder, `YouView`) with a floating log button, and presents the sheets (`LogDoseSheet`, `AddStockSheet`, `CalibrationView`).
+`HEMOnitorApp` owns one `AppRepository` plus a `FactorTrackerViewModel` and a `StockViewModel` built against it, and roots at `AppShellView`. That shell shows `OnboardingView` until onboarding is done, then a four-tab layout (`HomeView`, `StockView`, `AlertsView`, `YouView`) with a floating log button, and presents the sheets (`LogDoseSheet`, `AddStockSheet`, `CalibrationView`). `AppShellView` is also the only place that knows about both the factor and stock domains — the "days of cover" estimate and the alert schedule are composed there and pushed into the view models that need them, so neither view model references the other.
+
+The Timeline destination is still a `ComingSoonView` placeholder (phase 018); the accessibility/iPad pass (phase 020) is also outstanding. Every other phase of the redesign has landed.
 
 ### Persistence
 
@@ -106,11 +108,13 @@ This means back-dating is fully supported: an injection can be recorded, re-date
 
 `resetAll()` clears the history and returns the level to baseline but deliberately leaves `calibrationFactor` in place, so a reset app is still calibrated.
 
-`ContentView` refreshes via a 60-second `Timer.publish` plus `onAppear`. Patient parameters are hardcoded as init defaults (65 kg, 2 % baseline, 19 h half-life for Elocta) — there is no settings screen. Doses are entered in a "Doză (UI)" text field; `ContentView.parsedDoseIU` normalises commas and rejects anything non-finite or ≤ 0, gating both the "Adaugă injecție" button and an inline validation caption. It is the sole entry point to `addInjection`.
+`HomeView` refreshes via a 60-second `Timer.publish` plus `onAppear`, both calling `recalculateLevels(at:)`.
 
-### Time simulation
+Patient parameters (weight, baseline, half-life, product) live in the persisted `AppSettings` — seeded by onboarding, editable afterwards from the You tab's `ProfileEditSheet`. The old hardcoded init defaults (65 kg, 2 % baseline, 19 h Elocta) survive only as `AppSettings.defaultSettings`, the pre-onboarding starting point.
 
-The `+1h/+6h/+12h/+24h/-24h` controls are view-local (`simulatedOffsetHours` in `ContentView`) and never touch view-model state. For non-negative offsets `simulatedDisplayInfo()` delegates to `FactorVIIIModel.levelAtTime`, but it hand-rolls the backwards case: `levelAtTime` refuses negative `hoursSincePeak` by returning the peak unchanged, so the view re-implements the decay to extrapolate backwards toward the peak, clamped to `[baseline, peak]`. Changing the decay formula therefore means changing it in both the model and that negative branch.
+Doses are entered in `LogDoseSheet`, which is the sole entry point to `addInjection`. It logs either from stock (vial counts) or as a manual IU amount; `parsedManualDose` normalises commas and rejects anything non-finite or ≤ 0, gating the confirm button. `DoseLogPlan` computes the resulting peak and remaining stock as a pure function, so it is unit-testable independently of the view. The same comma-normalising parse is factored out in `ProfileEditParsing` for the profile fields.
+
+The `+1h/+6h/+12h/+24h/-24h` time-simulation controls were removed with the Home rebuild (phase 014); `CoverWindowCard` now covers the look-ahead case using `FactorVIIIModel` directly, forwards only. If a backwards extrapolation is ever needed again, note that `levelAtTime` refuses negative `hoursSincePeak` by returning the peak unchanged — the old view-local code hand-rolled the reverse decay, and that is why the comment in `CoverWindowCard` mentions it.
 
 ## Agent Workflow
 
