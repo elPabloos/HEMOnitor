@@ -35,7 +35,21 @@ All three target directories are Xcode 16+ `fileSystemSynchronizedGroups` (objec
 
 To change a **build setting** (e.g. `PRODUCT_BUNDLE_IDENTIFIER`), use the Xcode MCP `UpdateTargetBuildSetting` tool rather than editing `project.pbxproj`. It works while Xcode is open, which hand-editing does not — call `XcodeOpenWorkspace` once first to get a `workspaceIdentifier` and to grant access.
 
+## Who verifies what
+
+Agreed split (2026-09-23), after measuring what agent-driven UI testing actually cost and caught:
+
+**The agent does:** build, unit tests, and a **screenshot** of any screen it changed (`xcrun simctl io <udid> screenshot <path>`, then read the image). Screenshots are cheap and they catch layout faults — overlap, clipping, content hidden behind the tab bar. One found a real bug in task 012 for a few thousand tokens.
+
+**The user does:** the interactive tap-through. Tapping buttons, completing flows, checking things feel right.
+
+**Why:** two agent-driven tap sessions cost ~71K and ~130K tokens — comparable to *building an entire screen* — and found no bugs between them. Meanwhile the one real UI bug caught by an agent all session came from a screenshot at ~2% of that price.
+
+**Known consequence, accepted deliberately:** screenshots and unit tests cannot catch "the view renders but its buttons are wired to nothing." Task 021 (unresponsive onboarding buttons) is exactly that, and it reached the user rather than the agent. That is the expected shape of this trade-off, not a failure of it — so don't claim a screen "works" on the strength of a screenshot. Say what was actually checked.
+
 ## Driving the UI in the simulator
+
+**Not routine — see the split above.** Reach for this only when a bug genuinely can't be reproduced any other way, and expect it to be expensive. The notes below are kept because they were costly to work out.
 
 Real taps **are** possible, contrary to what earlier task notes (003) recorded. `osascript`/System Events does fail on Accessibility permissions, but Xcode's own device-interaction tooling works and was used to verify the dose-logging flow end to end in task 015. The sequence:
 

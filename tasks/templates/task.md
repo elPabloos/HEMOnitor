@@ -76,7 +76,10 @@ xcodebuild -scheme HEMOnitor -destination 'generic/platform=iOS Simulator' build
 
 - Build: <result>
 - Tests: <result, or the blocker from CLAUDE.md "Build & test" that prevented running them>
-- Manual check: <what was exercised in the UI, if anything>
+- Screenshot: <what the screenshot showed, or "n/a — no UI changed">
+- Interactive check: **left to the user** — see "Who verifies what" in CLAUDE.md.
+  Note here anything specific worth tapping through, and be explicit that it is
+  unverified. Do not describe a screen as working on the strength of a screenshot.
 
 ## Notes
 
