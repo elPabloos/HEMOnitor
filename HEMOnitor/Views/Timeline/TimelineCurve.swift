@@ -56,12 +56,23 @@ enum TimelineCurve {
     /// a single column, so the range is floored at a week.
     static let minimumDays: Int = 7
 
-    /// The window to plot: midnight of the oldest injection through today, never
-    /// shorter than `minimumDays`.
+    /// Plot geometry, shared so the scrolling content and the fixed chrome drawn
+    /// behind it land on exactly the same y positions.
+    static let plotHeight: CGFloat = 266
+    static let plotTopInset: CGFloat = 14
+    static let plotBottomInset: CGFloat = 14
+
+    /// Furthest the chart will ever project beyond today, however slowly the level is
+    /// decaying. Past this the curve is a flat line at baseline and adds nothing.
+    static let maximumFutureDays: Int = 14
+
+    /// The window to plot: midnight of the oldest injection through today, plus
+    /// `futureDays` of projection, never shorter than `minimumDays`.
     static func range(
         injections: [InjectionEvent],
         now: Date = Date(),
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        futureDays: Int = 0
     ) -> TimelineRange {
         let todayStart = calendar.startOfDay(for: now)
         let floorStart = calendar.date(byAdding: .day, value: -(minimumDays - 1), to: todayStart) ?? todayStart
@@ -71,19 +82,43 @@ enum TimelineCurve {
         let start = min(oldestStart, floorStart)
 
         let spannedDays = calendar.dateComponents([.day], from: start, to: todayStart).day ?? 0
-        return TimelineRange(start: start, dayCount: max(minimumDays, spannedDays + 1))
+        let trailing = min(max(futureDays, 0), maximumFutureDays)
+        return TimelineRange(start: start, dayCount: max(minimumDays, spannedDays + 1 + trailing))
+    }
+
+    /// How many days ahead the chart should keep plotting before the level has decayed
+    /// back to baseline and there is nothing left to show.
+    ///
+    /// Returns 0 when the level is already at baseline. `hoursUntilLevelReaches`
+    /// approaches baseline asymptotically and never actually arrives, so this aims at
+    /// a small margin above it rather than at baseline itself.
+    static func projectedFutureDays(
+        model: FactorVIIIModel,
+        currentRealPercent: Double,
+        marginAboveBaseline: Double = 0.5
+    ) -> Int {
+        let target = model.baselinePercent + marginAboveBaseline
+        guard let hours = model.hoursUntilLevelReaches(
+            targetRealPercent: target,
+            fromRealPercent: currentRealPercent
+        ) else {
+            return 0
+        }
+        return min(max(Int((hours / 24).rounded(.up)), 0), maximumFutureDays)
     }
 
     /// Samples the level across `range`, evenly in time.
     ///
-    /// Sampling is clamped at `now`, so the portion of today that hasn't happened yet
-    /// flat-lines at the current level instead of predicting forward — this screen is
-    /// a record of what happened, and Home already owns the forecast.
+    /// Sampling runs to the end of the range, including days after `now`. Those are a
+    /// projection: the decay simply continues from the last injection, which is what
+    /// makes the "days remaining" tail meaningful. An earlier version clamped at `now`
+    /// on the grounds that this screen is a record rather than a forecast — but with
+    /// the range deliberately extended past today, clamping would draw that tail as a
+    /// flat line at the current level, which would be wrong rather than conservative.
     static func sample(
         injections: [InjectionEvent],
         model: FactorVIIIModel,
         range: TimelineRange,
-        now: Date = Date(),
         sampleCount: Int = 240
     ) -> [TimelineCurvePoint] {
         guard sampleCount > 0 else { return [] }
@@ -94,7 +129,7 @@ enum TimelineCurve {
 
         return (0...sampleCount).map { index in
             let fraction = Double(index) / Double(sampleCount)
-            let instant = min(start + fraction * span, now.timeIntervalSince1970)
+            let instant = start + fraction * span
             let real = realLevel(at: Date(timeIntervalSince1970: instant), injections: injections, model: model)
             return TimelineCurvePoint(
                 xFraction: fraction,
@@ -121,28 +156,49 @@ enum TimelineCurve {
         return model.levelAtTime(peakPercent: last.peakRealPercent, hoursSincePeak: max(0, hours))
     }
 
-    /// Which day column the chart should centre on, given how far the injection list
-    /// has scrolled.
+    /// How far the chart should be slid horizontally, given how far the injection list
+    /// has scrolled vertically.
     ///
-    /// The list runs newest-first, so scrolling *down* walks *back* in time: at the
-    /// top the chart sits on today (the last index), at the bottom on the oldest day
-    /// (index 0). Returns the last index when the list cannot scroll at all.
+    /// Mirrors the design mock's coupling exactly — the mock computes
+    /// `scrollLeft = (1 - verticalFraction) * maxHorizontalScroll`, a *continuous*
+    /// mapping rather than a snap to whole days. The list runs newest-first, so
+    /// scrolling down walks back in time: at the top the chart sits on today (fully
+    /// scrolled right), at the bottom on the oldest day (fully left).
     ///
-    /// Pure so the coupling can be tested without a drag gesture — which the agent
-    /// cannot synthesise (see CLAUDE.md).
-    static func focusedDayIndex(
+    /// Returns how many points of chart content should sit to the left of the
+    /// viewport, in `0...maxChartScroll` — i.e. a scroll-view content offset, with 0
+    /// showing the oldest day and `maxChartScroll` showing today.
+    ///
+    /// Pure so the coupling can be tested without a scroll gesture — which the agent
+    /// cannot synthesise (see CLAUDE.md). Note that this verifies the *mapping* only;
+    /// whether the scroll handler fires at all is not something a test can establish.
+    static func chartScrollOffset(
         scrollOffset: CGFloat,
         contentHeight: CGFloat,
         viewportHeight: CGFloat,
-        dayCount: Int
-    ) -> Int {
-        guard dayCount > 1 else { return 0 }
+        maxChartScroll: CGFloat
+    ) -> CGFloat {
+        guard maxChartScroll > 0 else { return 0 }
 
         let scrollable = contentHeight - viewportHeight
-        guard scrollable > 1 else { return dayCount - 1 }
+        // Nothing to scroll through: stay pinned on today.
+        guard scrollable > 1 else { return maxChartScroll }
 
         let progress = min(max(Double(scrollOffset / scrollable), 0), 1)
-        let index = Int((Double(dayCount - 1) * (1 - progress)).rounded())
+        return CGFloat(1 - progress) * maxChartScroll
+    }
+
+    /// Index of the day column sitting at the centre of the viewport, given how far
+    /// the chart is scrolled. This is the day that carries the filled marker, so the
+    /// marker names whichever day you have scrolled to rather than always today.
+    static func centredDayIndex(
+        scrollOffset: CGFloat,
+        viewportWidth: CGFloat,
+        dayCount: Int
+    ) -> Int {
+        guard dayCount > 0 else { return 0 }
+        let centreX = scrollOffset + viewportWidth / 2
+        let index = Int((centreX / dayWidth).rounded(.down))
         return min(max(index, 0), dayCount - 1)
     }
 

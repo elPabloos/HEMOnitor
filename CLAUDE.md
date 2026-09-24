@@ -71,6 +71,16 @@ Agreed split (2026-09-23), after measuring what agent-driven UI testing actually
 
 **Known consequence, accepted deliberately:** screenshots and unit tests cannot catch "the view renders but its buttons are wired to nothing." Task 021 (unresponsive onboarding buttons) is exactly that, and it reached the user rather than the agent. That is the expected shape of this trade-off, not a failure of it — so don't claim a screen "works" on the strength of a screenshot. Say what was actually checked.
 
+### Never write tests for physical interaction
+
+**Do not write tests that simulate touch** — tapping, dragging, swiping, scrolling, pinching, long-pressing. Not in `HEMOnitorUITests`, not via `DeviceInteraction`, not at all. The agent cannot perform these gestures anyway (see "Driving the UI in the simulator"), and a simulated one is strictly worse than the user spending ten seconds with their thumb. Writing them burns tokens and thinking on a worse version of a check the user will do regardless.
+
+**Do test everything that doesn't need a finger:** pure functions and formulas, view-model state transitions, persistence round-trips, parsing and formatting, date/grouping logic. Appearance is checked with a screenshot or `RenderPreview` (including Dynamic Type and colour-scheme variants), not with an assertion.
+
+**The line:** a formula that a gesture happens to drive is still a formula — test it. The *gesture* is not. Keep such tests proportionate: a handful of cases for a linear mapping, not an exhaustive sweep.
+
+**And report them honestly.** In task 024 every test of the scroll→offset mapping passed while the coupling was completely dead — nothing fired at all. Tests of the maths said nothing about whether the feature worked. So write "the mapping is verified; whether it fires on device is unverified", never "the feature works". A passing test is evidence about exactly what it asserts and nothing more.
+
 ## Driving the UI in the simulator
 
 **Not routine — see the split above.** Reach for this only when a bug genuinely can't be reproduced any other way, and expect it to be expensive. The notes below are kept because they were costly to work out.
