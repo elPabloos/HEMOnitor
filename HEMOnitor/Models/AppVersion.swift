@@ -16,7 +16,7 @@ import Foundation
 /// target and update `latestTask` below. See CLAUDE.md, "Versioning".
 enum AppVersion {
     /// The most recent task merged into `main`, matching a file in `tasks/completed/`.
-    static let latestTask = "020-polish-qa"
+    static let latestTask = "024-timeline-chart-scrolling"
 
     static var shortVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
