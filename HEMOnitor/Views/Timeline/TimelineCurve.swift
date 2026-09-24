@@ -121,6 +121,31 @@ enum TimelineCurve {
         return model.levelAtTime(peakPercent: last.peakRealPercent, hoursSincePeak: max(0, hours))
     }
 
+    /// Which day column the chart should centre on, given how far the injection list
+    /// has scrolled.
+    ///
+    /// The list runs newest-first, so scrolling *down* walks *back* in time: at the
+    /// top the chart sits on today (the last index), at the bottom on the oldest day
+    /// (index 0). Returns the last index when the list cannot scroll at all.
+    ///
+    /// Pure so the coupling can be tested without a drag gesture — which the agent
+    /// cannot synthesise (see CLAUDE.md).
+    static func focusedDayIndex(
+        scrollOffset: CGFloat,
+        contentHeight: CGFloat,
+        viewportHeight: CGFloat,
+        dayCount: Int
+    ) -> Int {
+        guard dayCount > 1 else { return 0 }
+
+        let scrollable = contentHeight - viewportHeight
+        guard scrollable > 1 else { return dayCount - 1 }
+
+        let progress = min(max(Double(scrollOffset / scrollable), 0), 1)
+        let index = Int((Double(dayCount - 1) * (1 - progress)).rounded())
+        return min(max(index, 0), dayCount - 1)
+    }
+
     /// Maps a percentage onto a y position within a plot of `height`, inset by
     /// `topInset`/`bottomInset`. Higher percentages sit higher on screen.
     static func y(

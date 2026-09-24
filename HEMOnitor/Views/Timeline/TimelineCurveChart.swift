@@ -137,6 +137,9 @@ struct TimelineCurveChart: View {
             ForEach(range.days(), id: \.self) { day in
                 dayColumn(day)
                     .frame(width: TimelineCurve.dayWidth)
+                    // Scroll target: the list below scrolls the chart to a given day
+                    // via `ScrollViewReader.scrollTo(day)`.
+                    .id(day)
             }
         }
         .padding(.top, 10)
