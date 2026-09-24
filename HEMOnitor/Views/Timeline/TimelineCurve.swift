@@ -62,12 +62,17 @@ enum TimelineCurve {
     static let plotTopInset: CGFloat = 14
     static let plotBottomInset: CGFloat = 14
 
-    /// The window to plot: midnight of the oldest injection through today, never
-    /// shorter than `minimumDays`.
+    /// Furthest the chart will ever project beyond today, however slowly the level is
+    /// decaying. Past this the curve is a flat line at baseline and adds nothing.
+    static let maximumFutureDays: Int = 14
+
+    /// The window to plot: midnight of the oldest injection through today, plus
+    /// `futureDays` of projection, never shorter than `minimumDays`.
     static func range(
         injections: [InjectionEvent],
         now: Date = Date(),
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        futureDays: Int = 0
     ) -> TimelineRange {
         let todayStart = calendar.startOfDay(for: now)
         let floorStart = calendar.date(byAdding: .day, value: -(minimumDays - 1), to: todayStart) ?? todayStart
@@ -77,19 +82,43 @@ enum TimelineCurve {
         let start = min(oldestStart, floorStart)
 
         let spannedDays = calendar.dateComponents([.day], from: start, to: todayStart).day ?? 0
-        return TimelineRange(start: start, dayCount: max(minimumDays, spannedDays + 1))
+        let trailing = min(max(futureDays, 0), maximumFutureDays)
+        return TimelineRange(start: start, dayCount: max(minimumDays, spannedDays + 1 + trailing))
+    }
+
+    /// How many days ahead the chart should keep plotting before the level has decayed
+    /// back to baseline and there is nothing left to show.
+    ///
+    /// Returns 0 when the level is already at baseline. `hoursUntilLevelReaches`
+    /// approaches baseline asymptotically and never actually arrives, so this aims at
+    /// a small margin above it rather than at baseline itself.
+    static func projectedFutureDays(
+        model: FactorVIIIModel,
+        currentRealPercent: Double,
+        marginAboveBaseline: Double = 0.5
+    ) -> Int {
+        let target = model.baselinePercent + marginAboveBaseline
+        guard let hours = model.hoursUntilLevelReaches(
+            targetRealPercent: target,
+            fromRealPercent: currentRealPercent
+        ) else {
+            return 0
+        }
+        return min(max(Int((hours / 24).rounded(.up)), 0), maximumFutureDays)
     }
 
     /// Samples the level across `range`, evenly in time.
     ///
-    /// Sampling is clamped at `now`, so the portion of today that hasn't happened yet
-    /// flat-lines at the current level instead of predicting forward — this screen is
-    /// a record of what happened, and Home already owns the forecast.
+    /// Sampling runs to the end of the range, including days after `now`. Those are a
+    /// projection: the decay simply continues from the last injection, which is what
+    /// makes the "days remaining" tail meaningful. An earlier version clamped at `now`
+    /// on the grounds that this screen is a record rather than a forecast — but with
+    /// the range deliberately extended past today, clamping would draw that tail as a
+    /// flat line at the current level, which would be wrong rather than conservative.
     static func sample(
         injections: [InjectionEvent],
         model: FactorVIIIModel,
         range: TimelineRange,
-        now: Date = Date(),
         sampleCount: Int = 240
     ) -> [TimelineCurvePoint] {
         guard sampleCount > 0 else { return [] }
@@ -100,7 +129,7 @@ enum TimelineCurve {
 
         return (0...sampleCount).map { index in
             let fraction = Double(index) / Double(sampleCount)
-            let instant = min(start + fraction * span, now.timeIntervalSince1970)
+            let instant = start + fraction * span
             let real = realLevel(at: Date(timeIntervalSince1970: instant), injections: injections, model: model)
             return TimelineCurvePoint(
                 xFraction: fraction,
@@ -157,6 +186,20 @@ enum TimelineCurve {
 
         let progress = min(max(Double(scrollOffset / scrollable), 0), 1)
         return CGFloat(1 - progress) * maxChartScroll
+    }
+
+    /// Index of the day column sitting at the centre of the viewport, given how far
+    /// the chart is scrolled. This is the day that carries the filled marker, so the
+    /// marker names whichever day you have scrolled to rather than always today.
+    static func centredDayIndex(
+        scrollOffset: CGFloat,
+        viewportWidth: CGFloat,
+        dayCount: Int
+    ) -> Int {
+        guard dayCount > 0 else { return 0 }
+        let centreX = scrollOffset + viewportWidth / 2
+        let index = Int((centreX / dayWidth).rounded(.down))
+        return min(max(index, 0), dayCount - 1)
     }
 
     /// Maps a percentage onto a y position within a plot of `height`, inset by

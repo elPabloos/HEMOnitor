@@ -79,7 +79,6 @@ struct TimelineCurveTests {
             injections: [injection(daysAgo: 5)],
             model: model(),
             range: range,
-            now: now,
             sampleCount: 240
         )
         // Inclusive of both ends.
@@ -91,8 +90,7 @@ struct TimelineCurveTests {
         let points = TimelineCurve.sample(
             injections: [injection(daysAgo: 5)],
             model: model(),
-            range: range,
-            now: now
+            range: range
         )
         #expect(isClose(points.first!.xFraction, 0))
         #expect(isClose(points.last!.xFraction, 1))
@@ -137,20 +135,18 @@ struct TimelineCurveTests {
         #expect(isClose(level, 90))
     }
 
-    @Test func samplingIsClampedAtNowRatherThanForecastingForward() {
-        // The range runs to midnight tonight, so the last samples are after `now`.
-        // They must hold the current level rather than continue decaying.
+    @Test func samplingProjectsPastNowRatherThanFlatLining() {
+        // The range now deliberately extends beyond today so the chart can show how
+        // much cover is left. Samples after `now` must keep decaying rather than hold
+        // the current level — the opposite of what this screen did originally.
         let event = injection(daysAgo: 0.5, peak: 80)
-        let range = TimelineCurve.range(injections: [event], now: now)
-        let points = TimelineCurve.sample(
-            injections: [event],
-            model: model(),
-            range: range,
-            now: now
-        )
+        let range = TimelineCurve.range(injections: [event], now: now, futureDays: 3)
+        let points = TimelineCurve.sample(injections: [event], model: model(), range: range)
 
         let levelAtNow = TimelineCurve.realLevel(at: now, injections: [event], model: model())
-        #expect(isClose(points.last!.displayPercent, levelAtNow, 1e-6))
+        #expect(points.last!.displayPercent < levelAtNow)
+        // ...and never below baseline.
+        #expect(points.last!.displayPercent >= 2)
     }
 
     @Test func calibrationScalesDisplayedValuesOnly() {
@@ -159,8 +155,8 @@ struct TimelineCurveTests {
         calibrated.calibrationFactor = 2
 
         let range = TimelineCurve.range(injections: [event], now: now)
-        let plain = TimelineCurve.sample(injections: [event], model: model(), range: range, now: now)
-        let scaled = TimelineCurve.sample(injections: [event], model: calibrated, range: range, now: now)
+        let plain = TimelineCurve.sample(injections: [event], model: model(), range: range)
+        let scaled = TimelineCurve.sample(injections: [event], model: calibrated, range: range)
 
         for (a, b) in zip(plain, scaled) {
             #expect(isClose(b.displayPercent, a.displayPercent * 2, 1e-6))

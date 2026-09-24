@@ -115,6 +115,49 @@ floor, and the doc comment says plainly that it is not trusted.
 holds the mapping as a pure function. Viewport heights are **measured** rather than
 assumed.
 
+## Fourth pass — the month-boundary bug, plus two features
+
+Reported after testing: scrolling worked, but crossing a month boundary made the day
+strip jump back to today; and two behaviours from a reference video were missing.
+
+**The bug was an ID collision, not a date bug.** Rendering the strip straight at the
+rollover proved the dates were right — `29 Sat, 30 Sun, 31 Mon, 1 Tue, 2 Wed, 3 Thu`.
+The fault was in the scroll anchors added in the third pass:
+
+```swift
+zebra:         ForEach(0..<range.dayCount, id: \.self)  // Int ids 0…30
+scrollAnchors: ForEach(0..<anchorCount,   id: \.self)   // Int ids 0…247
+```
+
+`ScrollViewReader.scrollTo` resolves `ForEach` element identity as well as explicit
+`.id()`, so every index below `dayCount` had two candidate targets. Picking the zebra
+stripe scrolls to `index × 64` instead of `index × 8` — eight times too far, hitting the
+end of the content, which is today. Fixed twice over: the zebra is now a single `Canvas`
+(no identified subviews, and cheaper), and anchors use a dedicated `ChartAnchorID`.
+
+**Feature — the chart projects past today.** The range is extended by
+`TimelineCurve.projectedFutureDays`, which asks the existing `hoursUntilLevelReaches`
+for a small margin above baseline and caps at 14 days. No new PK maths, and the curve
+itself continues for free once `sample` stops clamping at `now`. That clamp was
+deliberate ("a record, not a forecast") but with the range extended it would have drawn
+the tail as a flat line at the current level — misleading rather than conservative.
+Note the *window length* is the only thing `projectedFutureDays` decides; a fixed
+constant would also work, at the cost of empty columns for a patient already at
+baseline.
+
+**Feature — the day marker follows the scroll.** The filled circle marks whichever day
+sits at the centre of the viewport (`TimelineCurve.centredDayIndex`), driven by the
+chart's own offset so it tracks a hand-drag as well as a list scroll. Today keeps a
+quiet outline ring when it isn't centred, so the present stays findable — an addition
+beyond the reference video, easily dropped.
+
+**Two ordering bugs found while wiring this up**, both the same shape: acting on state
+before the measurement it depends on exists. The chart opened three columns too far
+right because the list's first scroll report arrived while `chartViewportWidth` was
+still 0, putting the centring maths out by half a viewport. Both sites now guard on a
+measured width, and the opening scroll is a one-shot anchored on today rather than on
+the end of the (now longer) range.
+
 ## Constraints
 
 - Do not change the pharmacokinetic formulas or the real vs. display level split.

@@ -18,6 +18,11 @@ struct TimelineCurveChart: View {
     let points: [TimelineCurvePoint]
     let range: TimelineRange
 
+    /// The day currently centred in the viewport, which carries the filled marker.
+    /// The marker follows the scroll rather than being pinned to today, so it always
+    /// names the day you are looking at.
+    var markedDay: Date?
+
     /// Height of the plot area, above the day axis. Shared with `TimelineChartGuides`
     /// so the two line up exactly.
     private let plotHeight = TimelineCurve.plotHeight
@@ -57,12 +62,25 @@ struct TimelineCurveChart: View {
         .frame(width: chartWidth, height: plotHeight)
     }
 
+    /// Drawn in a single `Canvas` rather than a `ForEach` of `Rectangle`s.
+    ///
+    /// Not just for efficiency: a `ForEach(0..<dayCount, id: \.self)` publishes each
+    /// stripe as an `Int`-identified scroll target, which collided with the chart's
+    /// `Int`-indexed scroll anchors. `ScrollViewReader.scrollTo` then had two
+    /// candidates per index and could pick the stripe — scrolling to `index × dayWidth`
+    /// instead of `index × anchorSpacing`, eight times too far, which slammed the chart
+    /// into its end and made the day strip appear to restart at today. A `Canvas`
+    /// publishes no identified subviews at all.
     private var zebra: some View {
-        HStack(spacing: 0) {
-            ForEach(0..<range.dayCount, id: \.self) { index in
-                Rectangle()
-                    .fill(index.isMultiple(of: 2) ? AppColor.ink.opacity(0.035) : Color.clear)
-                    .frame(width: TimelineCurve.dayWidth)
+        Canvas { context, size in
+            for index in stride(from: 0, to: range.dayCount, by: 2) {
+                let stripe = CGRect(
+                    x: CGFloat(index) * TimelineCurve.dayWidth,
+                    y: 0,
+                    width: TimelineCurve.dayWidth,
+                    height: size.height
+                )
+                context.fill(Path(stripe), with: .color(AppColor.ink.opacity(0.035)))
             }
         }
     }
@@ -117,14 +135,25 @@ struct TimelineCurveChart: View {
     }
 
     private func dayColumn(_ day: Date) -> some View {
-        let isToday = Calendar.current.isDateInToday(day)
+        let calendar = Calendar.current
+        let isMarked = markedDay.map { calendar.isDate(day, inSameDayAs: $0) } ?? false
+        let isToday = calendar.isDateInToday(day)
+
         return VStack(spacing: 4) {
             Text(day.formatted(.dateTime.day()))
                 .font(.jakarta(13, weight: .extraBold))
-                .foregroundStyle(isToday ? Color.white : AppColor.ink)
+                .foregroundStyle(isMarked ? Color.white : AppColor.ink)
                 .frame(width: 34, height: 34)
                 .background {
-                    Circle().fill(isToday ? AppColor.primaryGreen : Color.clear)
+                    Circle().fill(isMarked ? AppColor.primaryGreen : Color.clear)
+                }
+                .overlay {
+                    // Today keeps a quiet ring when it isn't the centred day, so the
+                    // present stays findable while scrolling through history.
+                    if isToday && !isMarked {
+                        Circle().strokeBorder(AppColor.primaryGreen.opacity(0.5), lineWidth: 1.5)
+                            .frame(width: 34, height: 34)
+                    }
                 }
 
             Text(day.formatted(.dateTime.weekday(.abbreviated)))
@@ -261,4 +290,25 @@ struct TimelineScaleLabels: View {
             bottomInset: bottomInset
         )
     }
+}
+
+#Preview("Across a month boundary") {
+    // Anchored so the visible strip spans the end of one month into the next — the
+    // case where the day numbers must run ... 30, 31, 1, 2 ... without restarting.
+    let calendar = Calendar.current
+    let today = calendar.startOfDay(for: Date())
+    // Start three days before the 1st of this month, so the visible strip straddles
+    // the rollover: ... 29, 30, 31, 1, 2 ...
+    let firstOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: today))!
+    let start = calendar.date(byAdding: .day, value: -3, to: firstOfMonth)!
+    let range = TimelineRange(start: start, dayCount: 7)
+    let model = FactorVIIIModel(weightKg: 65, baselinePercent: 2, halfLifeHours: 19)
+
+    return ScrollView(.horizontal) {
+        TimelineCurveChart(
+            points: TimelineCurve.sample(injections: [], model: model, range: range),
+            range: range
+        )
+    }
+    .background(AppColor.glassFillStrong)
 }
