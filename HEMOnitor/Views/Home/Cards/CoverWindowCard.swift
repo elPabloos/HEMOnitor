@@ -31,6 +31,11 @@ struct CoverWindowCard: View {
 
     @Binding var lookAheadHours: Double
 
+    /// Fires `true` when the user grabs the slider and `false` when they let go, so
+    /// Home can drop its level animation for the duration of the drag. Without this
+    /// the eased transition on the big number reads as lag while scrubbing.
+    var onScrubbingChanged: (Bool) -> Void = { _ in }
+
     /// Fixed reference level: the boundary between "moderate" and "severe"
     /// coverage (see `SafetyZone`). Not user-configurable in this design —
     /// this supersedes the old free-text threshold field on `NextDoseCard`.
@@ -78,7 +83,12 @@ struct CoverWindowCard: View {
                         .animation(.easeOut(duration: 0.12), value: lookAheadHours)
                 }
 
-                Slider(value: $lookAheadHours, in: 0...72, step: 1)
+                Slider(
+                    value: $lookAheadHours,
+                    in: 0...72,
+                    step: 1,
+                    onEditingChanged: onScrubbingChanged
+                )
                     .tint(AppColor.primaryGreen)
                     .accessibilityLabel("Look ahead")
                     .accessibilityValue(isPreviewing ? "\(Int(lookAheadHours)) hours ahead" : "Now")

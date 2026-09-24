@@ -20,6 +20,20 @@ struct LevelVisualization: View {
     let curvePoints: [DecayCurvePoint]
     let onStyleChange: (DisplayStyle) -> Void
 
+    /// Whether the value is currently being scrubbed by the look-ahead slider.
+    ///
+    /// While scrubbing, the level must track the finger exactly — so the transition
+    /// is dropped entirely. An eased animation here reads as lag: the slider emits a
+    /// change per step, each restarting a transition that the next one interrupts, so
+    /// the number is permanently chasing a value the finger has already passed.
+    var isScrubbing: Bool = false
+
+    /// Smooth for the reasons a level changes on its own — the 60-second refresh, a
+    /// newly logged dose, a calibration — and absent while scrubbing.
+    private var valueAnimation: Animation? {
+        isScrubbing ? nil : .easeInOut(duration: 0.35)
+    }
+
     var body: some View {
         VStack(spacing: Theme.Spacing.stackGapLarge) {
             Group {
@@ -32,7 +46,7 @@ struct LevelVisualization: View {
                     curveBody
                 }
             }
-            .animation(.easeInOut(duration: 0.35), value: displayPercent)
+            .animation(valueAnimation, value: displayPercent)
 
             styleSwitcher
         }

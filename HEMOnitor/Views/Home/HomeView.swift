@@ -35,6 +35,10 @@ struct HomeView: View {
     /// The "Look ahead" slider on the cover-window card, forward-only (0...72h).
     @State private var lookAheadHours: Double = 0
 
+    /// True while the look-ahead slider is being dragged. Drives whether the level
+    /// visualization animates its value changes — see `LevelVisualization.isScrubbing`.
+    @State private var isScrubbingLookAhead = false
+
     @State private var showResetRealAlert = false
 
     // Timer: refreshes the level every 60 seconds.
@@ -56,7 +60,8 @@ struct HomeView: View {
                         zone: zone,
                         style: viewModel.displayStyle,
                         curvePoints: curvePoints,
-                        onStyleChange: { viewModel.displayStyle = $0 }
+                        onStyleChange: { viewModel.displayStyle = $0 },
+                        isScrubbing: isScrubbingLookAhead
                     )
                     ZoneBadge(zone: zone)
                 }
@@ -67,7 +72,8 @@ struct HomeView: View {
                     model: viewModel.model,
                     currentRealPercent: projectedRealPercent,
                     asOf: previewDate,
-                    lookAheadHours: $lookAheadHours
+                    lookAheadHours: $lookAheadHours,
+                    onScrubbingChanged: { isScrubbingLookAhead = $0 }
                 )
 
                 if !hasStock {
