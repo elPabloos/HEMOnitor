@@ -18,24 +18,12 @@ struct TimelineCurveChart: View {
     let points: [TimelineCurvePoint]
     let range: TimelineRange
 
-    /// Height of the plot area, above the day axis.
-    private let plotHeight: CGFloat = 266
-    private let topInset: CGFloat = 14
-    private let bottomInset: CGFloat = 14
+    /// Height of the plot area, above the day axis. Shared with `TimelineChartGuides`
+    /// so the two line up exactly.
+    private let plotHeight = TimelineCurve.plotHeight
+    private let topInset = TimelineCurve.plotTopInset
+    private let bottomInset = TimelineCurve.plotBottomInset
     private let tickLength: CGFloat = 5
-
-    /// Dashed reference levels, each with the colour it is drawn in.
-    private var referenceLines: [(percent: Double, color: Color, opacity: Double)] {
-        [
-            (100, AppColor.ink, 0.3),
-            (40, AppColor.primaryGreen, 0.55),
-            (15, AppColor.dangerForeground, 0.55)
-        ]
-    }
-
-    /// Unlabelled gridlines that give the eye something to read the curve against
-    /// between the three labelled levels.
-    private let minorLevels: [Double] = [60, 80, 120, 140]
 
     private var chartWidth: CGFloat {
         CGFloat(range.dayCount) * TimelineCurve.dayWidth
@@ -55,13 +43,15 @@ struct TimelineCurveChart: View {
 
     // MARK: - Plot
 
+    /// Only the parts that belong to specific days live here. The horizontal chrome —
+    /// gridlines, reference levels, baseline — is drawn by `TimelineChartGuides`
+    /// behind the scroll view, spanning the full viewport. That way overscrolling past
+    /// either end reveals chart that simply has no data, rather than a blank gap where
+    /// the gridlines stopped.
     private var plot: some View {
         ZStack(alignment: .topLeading) {
             zebra
-            minorGridlines
-            referenceGridlines
             curveFill
-            baseline
             dayTicks
         }
         .frame(width: chartWidth, height: plotHeight)
@@ -74,23 +64,6 @@ struct TimelineCurveChart: View {
                     .fill(index.isMultiple(of: 2) ? AppColor.ink.opacity(0.035) : Color.clear)
                     .frame(width: TimelineCurve.dayWidth)
             }
-        }
-    }
-
-    private var minorGridlines: some View {
-        ForEach(minorLevels, id: \.self) { level in
-            horizontalLine(at: level)
-                .stroke(AppColor.ink.opacity(0.07), lineWidth: 1)
-        }
-    }
-
-    private var referenceGridlines: some View {
-        ForEach(referenceLines, id: \.percent) { line in
-            horizontalLine(at: line.percent)
-                .stroke(
-                    line.color.opacity(line.opacity),
-                    style: StrokeStyle(lineWidth: 1, dash: [5, 5])
-                )
         }
     }
 
@@ -109,14 +82,6 @@ struct TimelineCurveChart: View {
             path.closeSubpath()
         }
         .fill(AppColor.primaryGreen.opacity(0.5))
-    }
-
-    private var baseline: some View {
-        Path { path in
-            path.move(to: CGPoint(x: 0, y: baselineY))
-            path.addLine(to: CGPoint(x: chartWidth, y: baselineY))
-        }
-        .stroke(AppColor.ink.opacity(0.25), lineWidth: 1)
     }
 
     private var dayTicks: some View {
@@ -170,14 +135,6 @@ struct TimelineCurveChart: View {
 
     // MARK: - Geometry
 
-    private func horizontalLine(at percent: Double) -> Path {
-        Path { path in
-            let lineY = y(percent)
-            path.move(to: CGPoint(x: 0, y: lineY))
-            path.addLine(to: CGPoint(x: chartWidth, y: lineY))
-        }
-    }
-
     private func x(_ fraction: Double) -> CGFloat {
         chartWidth * CGFloat(fraction)
     }
@@ -192,12 +149,83 @@ struct TimelineCurveChart: View {
     }
 }
 
+/// The chart's horizontal chrome: minor gridlines, the three dashed reference levels,
+/// and the baseline rule.
+///
+/// Drawn *behind* the scroll view at full viewport width rather than inside the
+/// scrolling content. Nothing here varies by day, so scrolling it would be pointless —
+/// and worse, it would end where the data ends, so overscrolling past either edge left
+/// a blank white gap. Spanning the viewport means an overscroll reveals an empty
+/// stretch of chart with its gridlines intact, which reads as "no data here" instead
+/// of as a rendering fault.
+struct TimelineChartGuides: View {
+    private let plotHeight = TimelineCurve.plotHeight
+    private let topInset = TimelineCurve.plotTopInset
+    private let bottomInset = TimelineCurve.plotBottomInset
+
+    /// Dashed reference levels, each with the colour it is drawn in.
+    private var referenceLines: [(percent: Double, color: Color, opacity: Double)] {
+        [
+            (100, AppColor.ink, 0.3),
+            (40, AppColor.primaryGreen, 0.55),
+            (15, AppColor.dangerForeground, 0.55)
+        ]
+    }
+
+    /// Unlabelled gridlines that give the eye something to read the curve against
+    /// between the three labelled levels.
+    private let minorLevels: [Double] = [60, 80, 120, 140]
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+
+            ZStack(alignment: .topLeading) {
+                ForEach(minorLevels, id: \.self) { level in
+                    line(at: level, width: width)
+                        .stroke(AppColor.ink.opacity(0.07), lineWidth: 1)
+                }
+
+                ForEach(referenceLines, id: \.percent) { reference in
+                    line(at: reference.percent, width: width)
+                        .stroke(
+                            reference.color.opacity(reference.opacity),
+                            style: StrokeStyle(lineWidth: 1, dash: [5, 5])
+                        )
+                }
+
+                Path { path in
+                    let baselineY = plotHeight - bottomInset
+                    path.move(to: CGPoint(x: 0, y: baselineY))
+                    path.addLine(to: CGPoint(x: width, y: baselineY))
+                }
+                .stroke(AppColor.ink.opacity(0.25), lineWidth: 1)
+            }
+        }
+        .frame(height: plotHeight)
+        .allowsHitTesting(false)
+    }
+
+    private func line(at percent: Double, width: CGFloat) -> Path {
+        Path { path in
+            let lineY = TimelineCurve.y(
+                forPercent: percent,
+                height: plotHeight,
+                topInset: topInset,
+                bottomInset: bottomInset
+            )
+            path.move(to: CGPoint(x: 0, y: lineY))
+            path.addLine(to: CGPoint(x: width, y: lineY))
+        }
+    }
+}
+
 /// The left-edge scale labels. Kept out of `TimelineCurveChart` because they must stay
 /// pinned while the chart scrolls horizontally underneath them.
 struct TimelineScaleLabels: View {
-    private let plotHeight: CGFloat = 266
-    private let topInset: CGFloat = 14
-    private let bottomInset: CGFloat = 14
+    private let plotHeight = TimelineCurve.plotHeight
+    private let topInset = TimelineCurve.plotTopInset
+    private let bottomInset = TimelineCurve.plotBottomInset
 
     private var labels: [(percent: Double, color: Color)] {
         [

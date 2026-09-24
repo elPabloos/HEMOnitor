@@ -18,10 +18,17 @@ struct TimelineView: View {
 
     @State private var editing: InjectionEvent?
 
-    /// The day the chart is scrolled to, derived from the list's scroll position.
-    /// Changing it scrolls the chart; the user can also scroll the chart by hand,
-    /// which leaves this alone.
-    @State private var focusedDay: Date?
+    /// Where the list's scroll position says the chart should sit: points of content
+    /// scrolled past the leading edge. Driving a value rather than calling `scrollTo`
+    /// directly from the scroll handler keeps the coupling declarative and lets the
+    /// mapping stay a tested pure function.
+    @State private var targetChartOffset: CGFloat = 0
+
+    /// Measured width of the chart's visible area, needed to know how far it can slide.
+    @State private var chartViewportWidth: CGFloat = 0
+
+    /// Captured on appear so the list's scroll handler can drive the chart.
+    @State private var chartScroller: ScrollViewProxy?
 
     private let chartHeight: CGFloat = 360
 
@@ -106,26 +113,26 @@ struct TimelineView: View {
     /// problem for free: it accepts the proposed width and scrolls its content, rather
     /// than forcing the whole screen as wide as the chart.
     private var chart: some View {
-        ScrollViewReader { chartProxy in
+        ScrollViewReader { scroller in
             ScrollView(.horizontal) {
                 TimelineCurveChart(points: points, range: range)
+                    .overlay(alignment: .leading) { scrollAnchors }
             }
             .scrollIndicators(.hidden)
             .frame(maxWidth: .infinity)
             .frame(height: chartHeight)
             .onAppear {
-                // Opens on today, at the right-hand edge.
-                if let today = range.days().last {
-                    chartProxy.scrollTo(today, anchor: .trailing)
-                }
+                chartScroller = scroller
+                scrollChart(to: chartContentWidth, animated: false)
             }
-            .onChange(of: focusedDay) { _, day in
-                guard let day else { return }
-                withAnimation(.easeOut(duration: 0.2)) {
-                    chartProxy.scrollTo(day, anchor: .center)
-                }
+            .onChange(of: targetChartOffset) { _, offset in
+                scrollChart(to: offset, animated: false)
             }
         }
+            .overlay(alignment: .topLeading) {
+                // Behind the data, spanning the viewport — see TimelineChartGuides.
+                TimelineChartGuides()
+            }
             .overlay(alignment: .topLeading) {
                 Text("FVIII activity (% of normal)")
                     .font(.jakarta(10.5, weight: .bold))
@@ -147,8 +154,63 @@ struct TimelineView: View {
                     .frame(height: 1)
             }
             .themeShadow(.ambientCard)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear { chartViewportWidth = proxy.size.width }
+                        .onChange(of: proxy.size.width) { _, width in
+                            chartViewportWidth = width
+                        }
+                }
+            }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(chartAccessibilityLabel)
+    }
+
+    /// Invisible, evenly spaced scroll targets laid across the chart's width.
+    ///
+    /// `ScrollViewReader` can only scroll *to a view*, so positioning the chart at an
+    /// arbitrary x means having a view at that x to aim at. One target per day would
+    /// snap in 64pt jumps — visibly stepped, and not the continuous pan the mock
+    /// specifies. Anchors every `anchorSpacing` points make `scrollTo` fine-grained
+    /// enough to read as smooth, on every supported iOS version, while the chart stays
+    /// a real `ScrollView` (native momentum, rubber-banding, and VoiceOver scrolling).
+    private var scrollAnchors: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<anchorCount, id: \.self) { index in
+                Color.clear
+                    .frame(width: Self.anchorSpacing, height: 1)
+                    .id(index)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private static let anchorSpacing: CGFloat = 8
+
+    private var anchorCount: Int {
+        max(1, Int((chartContentWidth / Self.anchorSpacing).rounded(.up)))
+    }
+
+    /// Scrolls the chart so `offset` points of content sit to the left of the viewport.
+    private func scrollChart(to offset: CGFloat, animated: Bool) {
+        guard let chartScroller else { return }
+        let clamped = min(max(offset, 0), max(0, chartContentWidth - chartViewportWidth))
+        let index = min(anchorCount - 1, Int((clamped / Self.anchorSpacing).rounded()))
+
+        if animated {
+            withAnimation(.easeOut(duration: 0.2)) {
+                chartScroller.scrollTo(index, anchor: .leading)
+            }
+        } else {
+            chartScroller.scrollTo(index, anchor: .leading)
+        }
+    }
+
+    /// Total width of the chart's content: one fixed-width column per day.
+    private var chartContentWidth: CGFloat {
+        CGFloat(range.dayCount) * TimelineCurve.dayWidth
     }
 
     /// The outer `GeometryReader` measures the list's viewport. That measurement is
@@ -197,8 +259,8 @@ struct TimelineView: View {
             }
             .coordinateSpace(name: Self.scrollSpace)
             .scrollIndicators(.hidden)
-            .onPreferenceChange(TimelineScrollOffsetKey.self) { metrics in
-                updateFocusedDay(metrics)
+            .onTimelineScroll { metrics in
+                syncChart(to: metrics)
             }
         }
     }
@@ -213,17 +275,13 @@ struct TimelineView: View {
     /// the inversion. Mapping to a day rather than to a raw pixel offset means the
     /// chart lands on whole columns and stays meaningful: the curve you are looking at
     /// belongs to the entries you are reading.
-    private func updateFocusedDay(_ metrics: TimelineScrollMetrics) {
-        let days = range.days()
-        guard !days.isEmpty else { return }
-
-        let index = TimelineCurve.focusedDayIndex(
+    private func syncChart(to metrics: TimelineScrollMetrics) {
+        targetChartOffset = TimelineCurve.chartScrollOffset(
             scrollOffset: metrics.offset,
             contentHeight: metrics.contentHeight,
             viewportHeight: metrics.viewportHeight,
-            dayCount: days.count
+            maxChartScroll: max(0, chartContentWidth - chartViewportWidth)
         )
-        focusedDay = days[index]
     }
 
     // MARK: - Derived data
@@ -270,8 +328,9 @@ struct TimelineView: View {
 /// Carries the list's scroll position up to the chart.
 ///
 /// `viewportHeight` is measured rather than assumed — it is the denominator of the
-/// scroll-progress calculation, and guessing it is what broke the coupling before.
-private struct TimelineScrollMetrics: Equatable {
+/// scroll-progress calculation, and guessing it at a constant 320pt is what broke the
+/// coupling in the first implementation.
+struct TimelineScrollMetrics: Equatable {
     var offset: CGFloat = 0
     var contentHeight: CGFloat = 0
     var viewportHeight: CGFloat = 0
@@ -281,5 +340,36 @@ private struct TimelineScrollOffsetKey: PreferenceKey {
     static var defaultValue = TimelineScrollMetrics()
     static func reduce(value: inout TimelineScrollMetrics, nextValue: () -> TimelineScrollMetrics) {
         value = nextValue()
+    }
+}
+
+extension View {
+    /// Reports a scroll view's position, size and viewport as it scrolls.
+    ///
+    /// Two implementations. On iOS 18 and later this is `onScrollGeometryChange`, the
+    /// API built for exactly this and the one that reliably fires *during* a drag. The
+    /// geometry-preference fallback below it is what the first implementation used
+    /// everywhere, and it never fired in practice — so it is kept only to satisfy the
+    /// project's iOS 17.5 floor, not because it is trusted.
+    ///
+    /// The caller must still apply `.coordinateSpace(name:)` and place the matching
+    /// `timelineScrollMetricsReader()` background for the fallback path to work.
+    @ViewBuilder
+    func onTimelineScroll(_ action: @escaping (TimelineScrollMetrics) -> Void) -> some View {
+        if #available(iOS 18.0, *) {
+            self.onScrollGeometryChange(for: TimelineScrollMetrics.self) { geometry in
+                TimelineScrollMetrics(
+                    offset: geometry.contentOffset.y,
+                    contentHeight: geometry.contentSize.height,
+                    viewportHeight: geometry.containerSize.height
+                )
+            } action: { _, metrics in
+                action(metrics)
+            }
+        } else {
+            self.onPreferenceChange(TimelineScrollOffsetKey.self) { metrics in
+                action(metrics)
+            }
+        }
     }
 }

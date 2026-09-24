@@ -76,10 +76,15 @@ xcodebuild -scheme HEMOnitor -destination 'generic/platform=iOS Simulator' build
 
 - Build: <result>
 - Tests: <result, or the blocker from CLAUDE.md "Build & test" that prevented running them>
+  State what the tests actually verify. If the task involves a gesture, they verify the
+  logic behind it, not the interaction — say so in those words.
 - Screenshot: <what the screenshot showed, or "n/a — no UI changed">
 - Interactive check: **left to the user** — see "Who verifies what" in CLAUDE.md.
   Note here anything specific worth tapping through, and be explicit that it is
   unverified. Do not describe a screen as working on the strength of a screenshot.
+  **Never write tests that simulate touch** (tap/drag/swipe/scroll/pinch) — see
+  "Never write tests for physical interaction" in CLAUDE.md. Leave those to the user
+  and list them here instead.
 
 ## Notes
 
