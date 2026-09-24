@@ -17,10 +17,11 @@ struct TimelineView: View {
     let onClose: () -> Void
 
     @State private var editing: InjectionEvent?
-    /// Horizontal offset of the chart, driven by the list's vertical offset.
-    @State private var chartOffset: CGFloat = 0
-    /// Width available to the chart viewport, needed to clamp `chartOffset`.
-    @State private var viewportWidth: CGFloat = 0
+
+    /// The day the chart is scrolled to, derived from the list's scroll position.
+    /// Changing it scrolls the chart; the user can also scroll the chart by hand,
+    /// which leaves this alone.
+    @State private var focusedDay: Date?
 
     private let chartHeight: CGFloat = 360
 
@@ -99,20 +100,32 @@ struct TimelineView: View {
         }
     }
 
-    /// The chart is far wider than the screen (64pt × one column per day), so it is
-    /// hung in an `overlay` on a flexible spacer rather than placed as a normal child.
-    /// A child that wide would otherwise set the width for this whole screen, pushing
-    /// the header button, the scale labels and every list row off to the left.
+    /// The chart is far wider than the screen (64pt × one column per day) and lives in
+    /// a real horizontal `ScrollView`, so it can be dragged directly *and* driven
+    /// programmatically from the list below. A `ScrollView` also solves the width
+    /// problem for free: it accepts the proposed width and scrolls its content, rather
+    /// than forcing the whole screen as wide as the chart.
     private var chart: some View {
-        Color.clear
+        ScrollViewReader { chartProxy in
+            ScrollView(.horizontal) {
+                TimelineCurveChart(points: points, range: range)
+            }
+            .scrollIndicators(.hidden)
             .frame(maxWidth: .infinity)
             .frame(height: chartHeight)
-            .overlay(alignment: .topLeading) {
-                // Scrolls horizontally, but driven by the list's offset below rather
-                // than by dragging, so the two axes stay in step.
-                TimelineCurveChart(points: points, range: range)
-                    .offset(x: chartOffset)
+            .onAppear {
+                // Opens on today, at the right-hand edge.
+                if let today = range.days().last {
+                    chartProxy.scrollTo(today, anchor: .trailing)
+                }
             }
+            .onChange(of: focusedDay) { _, day in
+                guard let day else { return }
+                withAnimation(.easeOut(duration: 0.2)) {
+                    chartProxy.scrollTo(day, anchor: .center)
+                }
+            }
+        }
             .overlay(alignment: .topLeading) {
                 Text("FVIII activity (% of normal)")
                     .font(.jakarta(10.5, weight: .bold))
@@ -134,66 +147,59 @@ struct TimelineView: View {
                     .frame(height: 1)
             }
             .themeShadow(.ambientCard)
-            .background {
-                GeometryReader { proxy in
-                    Color.clear
-                        .onAppear { setViewportWidth(proxy.size.width) }
-                        .onChange(of: proxy.size.width) { _, width in setViewportWidth(width) }
-                }
-            }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(chartAccessibilityLabel)
     }
 
-    /// Re-anchors the chart to today whenever the viewport is (re)measured — the
-    /// scrollable distance isn't known until then.
-    private func setViewportWidth(_ width: CGFloat) {
-        guard width != viewportWidth else { return }
-        viewportWidth = width
-        chartOffset = -maxChartScroll
-    }
-
+    /// The outer `GeometryReader` measures the list's viewport. That measurement is
+    /// what makes the coupling correct: scroll progress is
+    /// `offset / (contentHeight - viewportHeight)`, and an earlier version guessed the
+    /// viewport at a fixed 320pt, which collapsed the denominator on short histories
+    /// and left the chart barely moving.
     private var list: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(groups, id: \.day) { group in
-                    Text(group.title)
-                        .font(.jakarta(13, weight: .extraBold))
-                        .foregroundStyle(AppColor.ink)
-                        .padding(.top, 12)
-                        .padding(.bottom, 8)
-                        .padding(.horizontal, 2)
+        GeometryReader { viewport in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(groups, id: \.day) { group in
+                        Text(group.title)
+                            .font(.jakarta(13, weight: .extraBold))
+                            .foregroundStyle(AppColor.ink)
+                            .padding(.top, 12)
+                            .padding(.bottom, 8)
+                            .padding(.horizontal, 2)
 
-                    ForEach(group.injections) { injection in
-                        TimelineInjectionRow(
-                            injection: injection,
-                            fallbackProductName: viewModel.productName,
-                            onTap: { editing = injection }
+                        ForEach(group.injections) { injection in
+                            TimelineInjectionRow(
+                                injection: injection,
+                                fallbackProductName: viewModel.productName,
+                                onTap: { editing = injection }
+                            )
+                            .padding(.bottom, 9)
+                        }
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 26)
+                .background {
+                    // Reports how far the list has scrolled, which picks the day the
+                    // chart scrolls to: list at top = today, list at bottom = oldest.
+                    GeometryReader { content in
+                        Color.clear.preference(
+                            key: TimelineScrollOffsetKey.self,
+                            value: TimelineScrollMetrics(
+                                offset: -content.frame(in: .named(Self.scrollSpace)).minY,
+                                contentHeight: content.size.height,
+                                viewportHeight: viewport.size.height
+                            )
                         )
-                        .padding(.bottom, 9)
                     }
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 26)
-            .background {
-                // Reports how far the list has scrolled, which drives the chart's
-                // horizontal offset: list at top = chart at today.
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: TimelineScrollOffsetKey.self,
-                        value: TimelineScrollMetrics(
-                            offset: -proxy.frame(in: .named(Self.scrollSpace)).minY,
-                            contentHeight: proxy.size.height
-                        )
-                    )
-                }
+            .coordinateSpace(name: Self.scrollSpace)
+            .scrollIndicators(.hidden)
+            .onPreferenceChange(TimelineScrollOffsetKey.self) { metrics in
+                updateFocusedDay(metrics)
             }
-        }
-        .coordinateSpace(name: Self.scrollSpace)
-        .scrollIndicators(.hidden)
-        .onPreferenceChange(TimelineScrollOffsetKey.self) { metrics in
-            syncChart(to: metrics)
         }
     }
 
@@ -201,28 +207,24 @@ struct TimelineView: View {
 
     private static let scrollSpace = "timelineList"
 
-    /// How far the chart can slide before its right edge (today) is flush.
-    private var maxChartScroll: CGFloat {
-        max(0, CGFloat(range.dayCount) * TimelineCurve.dayWidth - viewportWidth)
-    }
+    /// Picks the day the chart should centre on from how far the list has scrolled.
+    ///
+    /// The list runs newest-first, so scrolling *down* walks *back* in time — hence
+    /// the inversion. Mapping to a day rather than to a raw pixel offset means the
+    /// chart lands on whole columns and stays meaningful: the curve you are looking at
+    /// belongs to the entries you are reading.
+    private func updateFocusedDay(_ metrics: TimelineScrollMetrics) {
+        let days = range.days()
+        guard !days.isEmpty else { return }
 
-    /// Maps the list's scroll progress onto the chart's horizontal offset. The list
-    /// runs newest-first, so scrolling *down* walks *back* in time — hence the
-    /// inversion.
-    private func syncChart(to metrics: TimelineScrollMetrics) {
-        guard maxChartScroll > 0, metrics.contentHeight > 0 else {
-            chartOffset = 0
-            return
-        }
-        let scrollable = max(1, metrics.contentHeight - viewportHeightEstimate)
-        let progress = min(max(metrics.offset / scrollable, 0), 1)
-        chartOffset = -(1 - progress) * maxChartScroll
+        let index = TimelineCurve.focusedDayIndex(
+            scrollOffset: metrics.offset,
+            contentHeight: metrics.contentHeight,
+            viewportHeight: metrics.viewportHeight,
+            dayCount: days.count
+        )
+        focusedDay = days[index]
     }
-
-    /// The list viewport isn't measured directly; its height is whatever is left below
-    /// the chart. An approximation is fine — it only affects how quickly the chart
-    /// pans, not where it starts or ends.
-    private var viewportHeightEstimate: CGFloat { 320 }
 
     // MARK: - Derived data
 
@@ -266,9 +268,13 @@ struct TimelineView: View {
 }
 
 /// Carries the list's scroll position up to the chart.
+///
+/// `viewportHeight` is measured rather than assumed — it is the denominator of the
+/// scroll-progress calculation, and guessing it is what broke the coupling before.
 private struct TimelineScrollMetrics: Equatable {
     var offset: CGFloat = 0
     var contentHeight: CGFloat = 0
+    var viewportHeight: CGFloat = 0
 }
 
 private struct TimelineScrollOffsetKey: PreferenceKey {
