@@ -132,7 +132,7 @@ struct TimelineCurveChart: View {
             }
         }
         .padding(.top, TimelineCurve.dayAxisTopPadding)
-        .padding(.bottom, 12)
+        .padding(.bottom, TimelineCurve.dayAxisBottomPadding)
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(AppColor.ink.opacity(0.07))
@@ -140,27 +140,20 @@ struct TimelineCurveChart: View {
         }
     }
 
-    /// One day's labels. Nothing here depends on where the chart is scrolled to — the
-    /// centred day is named by a fixed overlay that these labels slide beneath.
+    /// One day's number. Nothing here depends on where the chart is scrolled to — the
+    /// centred day is marked by a fixed overlay that these numbers slide beneath.
     private func dayColumn(_ label: TimelineDayLabel) -> some View {
-        VStack(spacing: 4) {
-            Text(label.dayNumber)
-                .font(.jakarta(13, weight: .extraBold))
-                .foregroundStyle(AppColor.ink)
-                .frame(width: 34, height: 34)
-                .overlay {
-                    // Today keeps a quiet ring, so the present stays findable while
-                    // scrolling through history.
-                    if label.isToday {
-                        Circle().strokeBorder(AppColor.primaryGreen.opacity(0.5), lineWidth: 1.5)
-                            .frame(width: 34, height: 34)
-                    }
+        Text(label.dayNumber)
+            .font(.jakarta(13, weight: .extraBold))
+            .foregroundStyle(AppColor.ink)
+            .frame(width: TimelineCurve.dayNumberSize, height: TimelineCurve.dayNumberSize)
+            .overlay {
+                // Today keeps a quiet ring, so the present stays findable while
+                // scrolling through history.
+                if label.isToday {
+                    Circle().strokeBorder(AppColor.primaryGreen.opacity(0.5), lineWidth: 1.5)
                 }
-
-            Text(label.weekday)
-                .font(.jakarta(10.5, weight: .bold))
-                .foregroundStyle(AppColor.ink.opacity(0.72))
-        }
+            }
     }
 
     // MARK: - Geometry

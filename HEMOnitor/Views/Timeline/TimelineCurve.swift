@@ -33,10 +33,10 @@ struct TimelineRange: Equatable {
     }
 }
 
-/// One day column's axis labels, resolved ahead of render.
+/// One day column's axis label, resolved ahead of render.
 ///
-/// The chart used to format these inside its `body`: two `Date.formatted` calls plus
-/// three `Calendar` queries per column, redone every time the marked day changed. At a
+/// The chart used to format these inside its `body`: a `Date.formatted` call plus
+/// `Calendar` queries per column, redone every time the marked day changed. At a
 /// few months of history that is several hundred formatter invocations per rebuild —
 /// enough on its own to miss a frame, and it landed squarely in the middle of a scroll.
 /// Formatting once per history change and handing the chart plain strings removes all
@@ -46,8 +46,6 @@ struct TimelineDayLabel: Identifiable, Equatable {
     let day: Date
     /// Day of the month, e.g. "21".
     let dayNumber: String
-    /// Abbreviated weekday, e.g. "Mon".
-    let weekday: String
     /// Whether this column is today, so the axis can keep it findable.
     let isToday: Bool
 
@@ -83,10 +81,24 @@ enum TimelineCurve {
     static let plotTopInset: CGFloat = 14
     static let plotBottomInset: CGFloat = 14
 
-    /// Gap between the plot and the first row of day labels. Shared because the centred
+    /// Gap between the plot and the row of day numbers. Shared because the centred
     /// day marker is drawn as a fixed overlay on the viewport rather than inside the
     /// scrolling axis, and the two have to land on the same y.
     static let dayAxisTopPadding: CGFloat = 10
+
+    /// Side of the square frame each day number sits in — and therefore the diameter of
+    /// the centred-day circle drawn over it. A fixed frame, not a text metric, so the
+    /// marker's geometry holds whatever the rendered type size.
+    static let dayNumberSize: CGFloat = 34
+
+    /// Gap below the day numbers, closing out the axis.
+    static let dayAxisBottomPadding: CGFloat = 12
+
+    /// Total height of the chart: the plot, plus the day axis and its padding. Derived
+    /// rather than hardcoded so removing or resizing part of the axis cannot leave a
+    /// band of empty space below it.
+    static let chartHeight: CGFloat =
+        plotHeight + dayAxisTopPadding + dayNumberSize + dayAxisBottomPadding
 
     /// Furthest the chart will ever project beyond today, however slowly the level is
     /// decaying. Past this the curve is a flat line at baseline and adds nothing.
@@ -223,7 +235,6 @@ enum TimelineCurve {
             TimelineDayLabel(
                 day: day,
                 dayNumber: day.formatted(.dateTime.day()),
-                weekday: day.formatted(.dateTime.weekday(.abbreviated)),
                 isToday: calendar.isDateInToday(day)
             )
         }

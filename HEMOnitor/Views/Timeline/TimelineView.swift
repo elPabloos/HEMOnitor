@@ -44,7 +44,7 @@ struct TimelineView: View {
     /// re-measure of the viewport doesn't drag the chart back under the user.
     @State private var hasAnchoredOnToday = false
 
-    private let chartHeight: CGFloat = 360
+    private let chartHeight = TimelineCurve.chartHeight
 
     var body: some View {
         VStack(spacing: 0) {
@@ -202,61 +202,39 @@ struct TimelineView: View {
             range: data.range,
             days: data.days
         )
-        // Top-aligned so the day axis lands at a known y. The content is shorter than
-        // `chartHeight`, and a horizontal `ScrollView` centres a short child
-        // vertically — which shifted the axis ~10pt below where `centredDayMarker`
-        // positions itself, leaving the real column's weekday visible under the pill.
+        // Top-aligned so the day axis lands at a known y. A horizontal `ScrollView`
+        // centres a child shorter than itself, which would shift the axis below where
+        // `centredDayMarker` positions itself and leave the real number visible beside
+        // the circle.
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    /// Names the day under the centre of the viewport — and stays put while the axis
-    /// slides beneath it.
+    /// Marks the day under the centre of the viewport — and stays put while the day
+    /// numbers slide beneath it.
     ///
     /// Fixed to the viewport rather than drawn on its day's column inside the scrolling
-    /// content, which is how the reference behaves: across a slow drag the strip moves
-    /// several points per frame while the pill never does. Keeping it out of the
+    /// content, which is how the reference behaves: across a slow drag the numbers move
+    /// several points per frame while the circle never does. Keeping it out of the
     /// content also keeps `TimelineCurveChart`'s inputs constant during a pan, so its
     /// body — and the whole per-day axis — is skipped entirely.
     ///
-    /// Opaque on purpose: the labels it covers are still rendered underneath it.
+    /// Opaque on purpose: the number it covers is still rendered underneath it.
     @ViewBuilder
     private var centredDayMarker: some View {
         if let label = centredDayLabel {
-            // The text is set tighter than the plain columns' number-over-weekday
-            // spacing, but the fill around it is sized to cover a whole column
-            // (34pt number + 4pt + weekday) with a little to spare. Both parts matter:
-            // compact text keeps the weekday clear of the capsule's curved end, while
-            // the oversized fill stops the real column's own weekday showing below the
-            // pill — which rendered "Fri" twice.
-            VStack(spacing: 1) {
-                Text(label.dayNumber)
-                    .font(.jakarta(13, weight: .extraBold))
-                Text(label.weekday)
-                    .font(.jakarta(10.5, weight: .bold))
-                    .opacity(0.85)
-            }
-            .foregroundStyle(Color.white)
-            .frame(width: 46, height: Self.markerHeight)
-            .background(Capsule().fill(AppColor.primaryGreen))
-            .padding(.top, TimelineCurve.plotHeight + TimelineCurve.dayAxisTopPadding - Self.markerBleed)
-            .allowsHitTesting(false)
-            // The chart already carries a summary label; this would only add noise.
-            .accessibilityHidden(true)
+            // Exactly the size of the day-number frame it covers, so the number beneath
+            // it is hidden and the columns either side are untouched.
+            Text(label.dayNumber)
+                .font(.jakarta(13, weight: .extraBold))
+                .foregroundStyle(Color.white)
+                .frame(width: TimelineCurve.dayNumberSize, height: TimelineCurve.dayNumberSize)
+                .background(Circle().fill(AppColor.primaryGreen))
+                .padding(.top, TimelineCurve.plotHeight + TimelineCurve.dayAxisTopPadding)
+                .allowsHitTesting(false)
+                // The chart already carries a summary label; this would only add noise.
+                .accessibilityHidden(true)
         }
     }
-
-    /// How far the marker's fill bleeds above and below a day column, so it covers the
-    /// column whatever the rendered text metrics turn out to be.
-    private static let markerBleed: CGFloat = 3
-
-    /// Tall enough to cover a full day column: 34pt number frame + 4pt spacing +
-    /// the weekday line, plus `markerBleed` at each end.
-    ///
-    /// The first two terms are fixed frames in `dayColumn`; only the weekday line is a
-    /// text metric, and it is bounded because the chart caps its Dynamic Type at
-    /// `xLarge` (see `chart`). Without that cap this number would be wrong at accessible
-    /// sizes and the column's own weekday would reappear below the marker.
-    private static let markerHeight: CGFloat = 34 + 4 + 14 + markerBleed * 2
 
     private var centredDayLabel: TimelineDayLabel? {
         guard let markedDayIndex, data.days.indices.contains(markedDayIndex) else { return nil }

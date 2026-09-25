@@ -240,13 +240,13 @@ struct TimelineCurveTests {
         #expect(calendar.component(.day, from: labels[3].day) == 2)
     }
 
-    @Test func everyLabelCarriesAWeekdayAndADayNumber() {
+    @Test func everyLabelCarriesADayNumber() {
         let calendar = Calendar.current
         let labels = TimelineCurve.dayLabels(
             for: TimelineRange(start: calendar.startOfDay(for: now), dayCount: 7),
             calendar: calendar
         )
 
-        #expect(labels.allSatisfy { !$0.dayNumber.isEmpty && !$0.weekday.isEmpty })
+        #expect(labels.allSatisfy { !$0.dayNumber.isEmpty })
     }
 }
