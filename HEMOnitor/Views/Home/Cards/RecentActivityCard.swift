@@ -20,6 +20,9 @@ struct RecentActivityCard: View {
     /// Used when an event predates product tracking, so old rows show the
     /// patient's current product rather than nothing.
     let fallbackProductName: String
+    /// Tapping a row hands the injection back so the owner can present
+    /// `EditInjectionSheet` — the same editor the Timeline list opens.
+    let onSelect: (InjectionEvent) -> Void
 
     private var recentFirst: [InjectionEvent] { injections.reversed() }
 
@@ -66,37 +69,54 @@ struct RecentActivityCard: View {
         injections.isEmpty ? "none yet" : "\(injections.count) logged"
     }
 
+    /// The whole row is a button opening the injection editor, with a trailing
+    /// chevron so the affordance is visible — same contract as
+    /// `TimelineInjectionRow`.
     private func row(for injection: InjectionEvent) -> some View {
-        HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(injection.productName ?? fallbackProductName)
-                    .font(.jakarta(14.5, weight: .extraBold))
-                    .foregroundStyle(AppColor.ink)
+        Button {
+            onSelect(injection)
+        } label: {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(injection.productName ?? fallbackProductName)
+                        .font(.jakarta(14.5, weight: .extraBold))
+                        .foregroundStyle(AppColor.ink)
 
-                Text("\(injection.doseIU.wholeNumberText) IU")
-                    .font(.jakarta(13.5, weight: .bold))
-                    .foregroundStyle(AppColor.primaryGreen)
+                    Text("\(injection.doseIU.wholeNumberText) IU")
+                        .font(.jakarta(13.5, weight: .bold))
+                        .foregroundStyle(AppColor.primaryGreen)
 
-                Text(formattedDateTime(injection.date))
-                    .font(AppTextStyle.caption)
-                    .foregroundStyle(AppColor.inkSecondary)
-
-                if let lot = injection.lot {
-                    Text("Lot \(lot)")
+                    Text(formattedDateTime(injection.date))
                         .font(AppTextStyle.caption)
                         .foregroundStyle(AppColor.inkSecondary)
+
+                    if let lot = injection.lot {
+                        Text("Lot \(lot)")
+                            .font(AppTextStyle.caption)
+                            .foregroundStyle(AppColor.inkSecondary)
+                    }
                 }
+
+                Spacer(minLength: Theme.Spacing.stackGapSmall)
+
+                Text("\(model.displayLevel(fromRealPercent: injection.peakRealPercent).wholeNumberText)%")
+                    .font(AppTextStyle.monoValue)
+                    .foregroundStyle(AppColor.inkSecondary)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(AppColor.ink.opacity(0.4))
             }
-
-            Spacer(minLength: Theme.Spacing.stackGapSmall)
-
-            Text("\(model.displayLevel(fromRealPercent: injection.peakRealPercent).wholeNumberText)%")
-                .font(AppTextStyle.monoValue)
-                .foregroundStyle(AppColor.inkSecondary)
+            .padding(.vertical, 14)
+            .padding(.horizontal, 4)
+            // Without this only the text is tappable; the gaps between the
+            // columns would fall through the row.
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 14)
-        .padding(.horizontal, 4)
+        .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens the editor for this injection")
+        .accessibilityAddTraits(.isButton)
     }
 
     /// e.g. "Monday, Sept 21, 18:23".
@@ -116,7 +136,8 @@ struct RecentActivityCard: View {
             InjectionEvent(id: UUID(), date: Date().addingTimeInterval(-3600 * 30), doseIU: 3000, realLevelBefore: 8, peakRealPercent: 70)
         ],
         model: model,
-        fallbackProductName: "Elocta"
+        fallbackProductName: "Elocta",
+        onSelect: { _ in }
     )
     .padding()
     .background(AppColor.backgroundGradient)
