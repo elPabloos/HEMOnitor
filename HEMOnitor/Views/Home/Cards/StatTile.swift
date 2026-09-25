@@ -26,7 +26,7 @@ struct StatTile: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard(cornerRadius: Theme.Radius.card, padding: Theme.Spacing.cardPaddingCompact)
+        .glassCard(cornerRadius: HomeRadius.card, padding: Theme.Spacing.cardPaddingCompact)
         .accessibilityElement(children: .combine)
     }
 }

@@ -36,7 +36,7 @@ struct NoStockPromptCard: View {
             }
             .padding(Theme.Spacing.cardPadding)
             .background {
-                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                RoundedRectangle(cornerRadius: HomeRadius.card, style: .continuous)
                     .fill(AppColor.warningBackground)
             }
         }

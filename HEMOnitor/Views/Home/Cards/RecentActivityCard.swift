@@ -58,7 +58,7 @@ struct RecentActivityCard: View {
                     .frame(maxHeight: 260)
                 }
             }
-            .glassCard()
+            .glassCard(cornerRadius: HomeRadius.cardLarge)
         }
     }
 
