@@ -93,7 +93,7 @@ struct HomeView: View {
                     )
                 }
 
-                RecentActivityCard(injections: viewModel.injections, model: viewModel.model)
+                RecentActivityCard(injections: viewModel.injections, model: viewModel.model, fallbackProductName: viewModel.productName)
 
                 resetButton
 

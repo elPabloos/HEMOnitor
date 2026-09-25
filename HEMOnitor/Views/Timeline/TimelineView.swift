@@ -18,11 +18,9 @@ struct TimelineView: View {
 
     @State private var editing: InjectionEvent?
 
-    /// Where the list's scroll position says the chart should sit: points of content
-    /// scrolled past the leading edge. Driving a value rather than calling `scrollTo`
-    /// directly from the scroll handler keeps the coupling declarative and lets the
-    /// mapping stay a tested pure function.
-    @State private var targetChartOffset: CGFloat = 0
+    /// Everything derived from the injection history, computed once per change to it.
+    /// See `TimelineData` for why this is cached rather than recomputed in `body`.
+    @State private var data = TimelineData()
 
     /// Measured width of the chart's visible area, needed to know how far it can slide.
     @State private var chartViewportWidth: CGFloat = 0
@@ -30,13 +28,21 @@ struct TimelineView: View {
     /// Captured on appear so the list's scroll handler can drive the chart.
     @State private var chartScroller: ScrollViewProxy?
 
-    /// The chart's own scroll offset, observed so the centred-day marker follows a
-    /// hand-drag of the chart as well as a scroll of the list.
-    @State private var chartScrollOffset: CGFloat = 0
+    /// Index into `data.days` of the day under the centre of the chart's viewport.
+    ///
+    /// An index, updated only when it actually changes, rather than the chart's raw
+    /// content offset: the offset changes every frame of a drag, and storing it here
+    /// re-ran `body` every frame for a marker that only moves once per 64pt column.
+    @State private var markedDayIndex: Int?
 
     /// Whether the opening scroll-to-today has happened. One-shot, so a later
     /// re-measure of the viewport doesn't drag the chart back under the user.
     @State private var hasAnchoredOnToday = false
+
+    /// Bookkeeping for the scroll coupling, deliberately a reference type: it is
+    /// written on every scroll callback, and as `@State` value it would invalidate the
+    /// view each time — which is exactly the per-frame `body` churn being removed here.
+    @State private var coupling = ChartCouplingState()
 
     private let chartHeight: CGFloat = 360
 
@@ -55,6 +61,11 @@ struct TimelineView: View {
             }
         }
         .background(AppColor.backgroundGradient.ignoresSafeArea())
+        .onAppear { rebuildData() }
+        .onChange(of: viewModel.injections) { _, _ in rebuildData() }
+        // Anchoring needs both the data and the viewport width, and they arrive in
+        // either order — so each one re-checks whether the other has landed.
+        .onChange(of: data.range) { _, _ in anchorOnTodayIfReady() }
         .sheet(item: $editing) { injection in
             EditInjectionSheet(
                 viewModel: viewModel,
@@ -123,19 +134,16 @@ struct TimelineView: View {
     private var chart: some View {
         ScrollViewReader { scroller in
             ScrollView(.horizontal) {
-                TimelineCurveChart(points: points, range: range, markedDay: markedDay)
+                TimelineCurveChart(points: data.points, range: data.range, markedDay: markedDay)
                     .overlay(alignment: .leading) { scrollAnchors }
             }
             .scrollIndicators(.hidden)
             .frame(maxWidth: .infinity)
             .frame(height: chartHeight)
             .onTimelineHorizontalScroll { offset in
-                chartScrollOffset = offset
+                updateMarkedDay(chartScrollOffset: offset)
             }
             .onAppear { chartScroller = scroller }
-            .onChange(of: targetChartOffset) { _, offset in
-                scrollChart(to: offset, animated: false)
-            }
         }
             .overlay(alignment: .topLeading) {
                 // Behind the data, spanning the viewport — see TimelineChartGuides.
@@ -204,39 +212,49 @@ struct TimelineView: View {
         max(1, Int((chartContentWidth / Self.anchorSpacing).rounded(.up)))
     }
 
-    /// Records the chart's viewport width and, the first time it is known, anchors the
-    /// chart on today.
+    /// Records the chart's viewport width and, once both it and the data are known,
+    /// anchors the chart on today.
     ///
     /// The anchoring can't happen in `onAppear` — the width isn't measured yet at that
-    /// point, and centring needs it. The flag keeps a later re-measure (rotation, iPad
-    /// split view) from yanking the chart back to today under the user.
+    /// point, and centring needs it.
     private func measureChartViewport(_ width: CGFloat) {
         guard width > 0, width != chartViewportWidth else { return }
         chartViewportWidth = width
+        anchorOnTodayIfReady()
+    }
 
-        guard !hasAnchoredOnToday else { return }
+    /// Centres the chart on today, once. The flag keeps a later re-measure (rotation,
+    /// iPad split view) from yanking the chart back to today under the user.
+    private func anchorOnTodayIfReady() {
+        guard !hasAnchoredOnToday, chartViewportWidth > 0, data.range.dayCount > 0 else { return }
         hasAnchoredOnToday = true
-        scrollChart(to: offsetCentringToday(viewportWidth: width), animated: false)
+
+        let offset = offsetCentringToday(viewportWidth: chartViewportWidth)
+        scrollChart(to: offset)
+        // Seed the marker here rather than waiting for a scroll callback: the callback
+        // is iOS 18-only, and even there the chart opens without having been dragged.
+        updateMarkedDay(chartScrollOffset: offset)
     }
 
     /// Scrolls the chart so `offset` points of content sit to the left of the viewport.
-    private func scrollChart(to offset: CGFloat, animated: Bool) {
+    ///
+    /// Anchors are `anchorSpacing` apart, so consecutive scroll callbacks frequently
+    /// resolve to the same one. Skipping those is the point: each `scrollTo` forces a
+    /// layout pass over the chart, and firing one per frame for a target that hasn't
+    /// moved is what the coupling used to do.
+    private func scrollChart(to offset: CGFloat) {
         guard let chartScroller else { return }
         let clamped = min(max(offset, 0), max(0, chartContentWidth - chartViewportWidth))
         let index = min(anchorCount - 1, Int((clamped / Self.anchorSpacing).rounded()))
 
-        if animated {
-            withAnimation(.easeOut(duration: 0.2)) {
-                chartScroller.scrollTo(ChartAnchorID(index: index), anchor: .leading)
-            }
-        } else {
-            chartScroller.scrollTo(ChartAnchorID(index: index), anchor: .leading)
-        }
+        guard index != coupling.lastAnchorIndex else { return }
+        coupling.lastAnchorIndex = index
+        chartScroller.scrollTo(ChartAnchorID(index: index), anchor: .leading)
     }
 
     /// Total width of the chart's content: one fixed-width column per day.
     private var chartContentWidth: CGFloat {
-        CGFloat(range.dayCount) * TimelineCurve.dayWidth
+        CGFloat(data.range.dayCount) * TimelineCurve.dayWidth
     }
 
     /// Scroll offset that puts today's column under the centre of the viewport — and
@@ -247,7 +265,7 @@ struct TimelineView: View {
     /// the write being visible yet.
     private func offsetCentringToday(viewportWidth: CGFloat) -> CGFloat {
         let calendar = Calendar.current
-        let days = range.days()
+        let days = data.days
         let todayIndex = days.firstIndex { calendar.isDateInToday($0) } ?? max(0, days.count - 1)
         let columnCentre = CGFloat(todayIndex) * TimelineCurve.dayWidth + TimelineCurve.dayWidth / 2
         return max(0, columnCentre - viewportWidth / 2)
@@ -262,7 +280,7 @@ struct TimelineView: View {
         GeometryReader { viewport in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(groups, id: \.day) { group in
+                    ForEach(data.groups, id: \.day) { group in
                         Text(group.title)
                             .font(.jakarta(13, weight: .extraBold))
                             .foregroundStyle(AppColor.ink)
@@ -319,9 +337,9 @@ struct TimelineView: View {
         // The list's first scroll report can arrive before the chart's width has been
         // measured. Acting on it then centres the chart half a viewport too far right
         // — three whole day columns on an iPhone — so wait for a real width.
-        guard chartViewportWidth > 0 else { return }
+        guard chartViewportWidth > 0, data.range.dayCount > 0 else { return }
 
-        targetChartOffset = TimelineCurve.chartScrollOffset(
+        let offset = TimelineCurve.chartScrollOffset(
             scrollOffset: metrics.offset,
             contentHeight: metrics.contentHeight,
             viewportHeight: metrics.viewportHeight,
@@ -330,68 +348,110 @@ struct TimelineView: View {
             // by scrolling the chart itself.
             maxChartScroll: offsetCentringToday(viewportWidth: chartViewportWidth)
         )
+
+        // Driven straight from the callback rather than through an intermediate
+        // `@State` offset. The state round-trip re-ran `body` on every scroll frame,
+        // and `scrollChart` already drops the calls that change nothing.
+        scrollChart(to: offset)
+    }
+
+    /// Moves the centred-day marker to whichever column now sits under the middle of
+    /// the chart's viewport, writing state only when the column actually changes.
+    private func updateMarkedDay(chartScrollOffset: CGFloat) {
+        guard !data.days.isEmpty, chartViewportWidth > 0 else { return }
+        let index = TimelineCurve.centredDayIndex(
+            scrollOffset: chartScrollOffset,
+            viewportWidth: chartViewportWidth,
+            dayCount: data.days.count
+        )
+        if index != markedDayIndex { markedDayIndex = index }
     }
 
     // MARK: - Derived data
 
-    /// Runs from the oldest injection through today *plus* however many days it takes
-    /// the level to decay back to baseline, so the chart shows how much cover is left
-    /// rather than stopping dead at the present.
-    private var range: TimelineRange {
-        TimelineCurve.range(
-            injections: viewModel.injections,
+    /// The day under the centre of the chart's viewport.
+    private var markedDay: Date? {
+        guard let markedDayIndex, data.days.indices.contains(markedDayIndex) else { return nil }
+        return data.days[markedDayIndex]
+    }
+
+    /// Recomputes everything derived from the injection history.
+    ///
+    /// Called when that history changes, and nowhere else — in particular never from
+    /// `body`. The range runs from the oldest injection through today *plus* however
+    /// many days it takes the level to decay back to baseline, so the chart shows how
+    /// much cover is left rather than stopping dead at the present.
+    private func rebuildData() {
+        let calendar = Calendar.current
+        let injections = viewModel.injections
+
+        let range = TimelineCurve.range(
+            injections: injections,
             futureDays: TimelineCurve.projectedFutureDays(
                 model: viewModel.model,
                 currentRealPercent: viewModel.currentRealLevelPercent
             )
         )
-    }
 
-    private var points: [TimelineCurvePoint] {
-        TimelineCurve.sample(
-            injections: viewModel.injections,
-            model: viewModel.model,
-            range: range
-        )
-    }
-
-    /// The day under the centre of the chart's viewport.
-    private var markedDay: Date? {
-        let days = range.days()
-        guard !days.isEmpty else { return nil }
-        let index = TimelineCurve.centredDayIndex(
-            scrollOffset: chartScrollOffset,
-            viewportWidth: chartViewportWidth,
-            dayCount: days.count
-        )
-        return days[index]
-    }
-
-    private struct DayGroup {
-        let day: Date
-        let title: String
-        let injections: [InjectionEvent]
-    }
-
-    /// Injections bucketed by calendar day, newest day first and newest-first within
-    /// each day.
-    private var groups: [DayGroup] {
-        let calendar = Calendar.current
-        let buckets = Dictionary(grouping: viewModel.injections) { calendar.startOfDay(for: $0.date) }
-        return buckets.keys.sorted(by: >).map { day in
+        // Injections bucketed by calendar day, newest day first and newest-first
+        // within each day.
+        let buckets = Dictionary(grouping: injections) { calendar.startOfDay(for: $0.date) }
+        let groups = buckets.keys.sorted(by: >).map { day in
             DayGroup(
                 day: day,
                 title: day.formatted(.dateTime.day().month(.wide).year()),
                 injections: buckets[day, default: []].sorted { $0.date > $1.date }
             )
         }
+
+        data = TimelineData(
+            range: range,
+            days: range.days(calendar: calendar),
+            points: TimelineCurve.sample(
+                injections: injections,
+                model: viewModel.model,
+                range: range
+            ),
+            groups: groups,
+            injectionCount: injections.count
+        )
     }
 
     private var chartAccessibilityLabel: String {
-        let count = viewModel.injections.count
+        let count = data.injectionCount
         let doses = count == 1 ? "1 injection" : "\(count) injections"
-        return "Estimated factor level across \(range.dayCount) days, \(doses) logged."
+        return "Estimated factor level across \(data.range.dayCount) days, \(doses) logged."
     }
+}
+
+/// Injections for one calendar day, with the heading the list shows above them.
+private struct DayGroup {
+    let day: Date
+    let title: String
+    let injections: [InjectionEvent]
+}
+
+/// Everything the Timeline draws that depends on the injection history rather than on
+/// scroll position.
+///
+/// Cached in `@State` instead of being recomputed as computed properties of the view,
+/// which is what made the screen stutter: `body` re-runs on every scroll callback, and
+/// each run re-sampled the curve (240 points, each scanning the history), re-grouped
+/// and re-sorted the whole list, and re-derived every day column. None of that depends
+/// on where the user has scrolled to.
+private struct TimelineData {
+    var range = TimelineRange(start: .distantPast, dayCount: 0)
+    var days: [Date] = []
+    var points: [TimelineCurvePoint] = []
+    var groups: [DayGroup] = []
+    var injectionCount = 0
+}
+
+/// Mutable bookkeeping for the chart/list coupling. A class so the scroll handlers can
+/// update it without invalidating the view — see `TimelineView.coupling`.
+private final class ChartCouplingState {
+    /// The anchor the chart was last scrolled to, or -1 before the first scroll.
+    var lastAnchorIndex = -1
 }
 
 /// Carries the list's scroll position up to the chart.
