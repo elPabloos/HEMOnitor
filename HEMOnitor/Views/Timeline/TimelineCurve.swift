@@ -33,6 +33,27 @@ struct TimelineRange: Equatable {
     }
 }
 
+/// One day column's axis labels, resolved ahead of render.
+///
+/// The chart used to format these inside its `body`: two `Date.formatted` calls plus
+/// three `Calendar` queries per column, redone every time the marked day changed. At a
+/// few months of history that is several hundred formatter invocations per rebuild —
+/// enough on its own to miss a frame, and it landed squarely in the middle of a scroll.
+/// Formatting once per history change and handing the chart plain strings removes all
+/// of it from the scrolling path.
+struct TimelineDayLabel: Identifiable, Equatable {
+    /// Midnight of the day this column represents.
+    let day: Date
+    /// Day of the month, e.g. "21".
+    let dayNumber: String
+    /// Abbreviated weekday, e.g. "Mon".
+    let weekday: String
+    /// Whether this column is today, so the axis can keep it findable.
+    let isToday: Bool
+
+    var id: Date { day }
+}
+
 /// Pure geometry and sampling for the Timeline chart.
 ///
 /// Deliberately separate from `DecayCurve`, which projects *forward* from a single
@@ -61,6 +82,11 @@ enum TimelineCurve {
     static let plotHeight: CGFloat = 266
     static let plotTopInset: CGFloat = 14
     static let plotBottomInset: CGFloat = 14
+
+    /// Gap between the plot and the first row of day labels. Shared because the centred
+    /// day marker is drawn as a fixed overlay on the viewport rather than inside the
+    /// scrolling axis, and the two have to land on the same y.
+    static let dayAxisTopPadding: CGFloat = 10
 
     /// Furthest the chart will ever project beyond today, however slowly the level is
     /// decaying. Past this the curve is a flat line at baseline and adds nothing.
@@ -186,6 +212,21 @@ enum TimelineCurve {
 
         let progress = min(max(Double(scrollOffset / scrollable), 0), 1)
         return CGFloat(1 - progress) * maxChartScroll
+    }
+
+    /// Resolves every day column's axis labels in one pass, reusing a single calendar.
+    ///
+    /// Called when the history changes, never from a view's `body` — see
+    /// `TimelineDayLabel`.
+    static func dayLabels(for range: TimelineRange, calendar: Calendar = .current) -> [TimelineDayLabel] {
+        range.days(calendar: calendar).map { day in
+            TimelineDayLabel(
+                day: day,
+                dayNumber: day.formatted(.dateTime.day()),
+                weekday: day.formatted(.dateTime.weekday(.abbreviated)),
+                isToday: calendar.isDateInToday(day)
+            )
+        }
     }
 
     /// Index of the day column sitting at the centre of the viewport, given how far

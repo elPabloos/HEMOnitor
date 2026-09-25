@@ -25,8 +25,13 @@ struct TimelineView: View {
     /// Measured width of the chart's visible area, needed to know how far it can slide.
     @State private var chartViewportWidth: CGFloat = 0
 
-    /// Captured on appear so the list's scroll handler can drive the chart.
-    @State private var chartScroller: ScrollViewProxy?
+    /// Where the chart should sit horizontally.
+    ///
+    /// Held in a reference type that only the chart's own scroller observes, so the
+    /// sixty-times-a-second traffic of a scroll never reaches this view — which owns
+    /// the list and every injection row in it. Deliberately `@State` rather than
+    /// `@StateObject`: `@State` keeps the instance alive without subscribing to it.
+    @State private var pan = ChartPan()
 
     /// Index into `data.days` of the day under the centre of the chart's viewport.
     ///
@@ -38,11 +43,6 @@ struct TimelineView: View {
     /// Whether the opening scroll-to-today has happened. One-shot, so a later
     /// re-measure of the viewport doesn't drag the chart back under the user.
     @State private var hasAnchoredOnToday = false
-
-    /// Bookkeeping for the scroll coupling, deliberately a reference type: it is
-    /// written on every scroll callback, and as `@State` value it would invalidate the
-    /// view each time — which is exactly the per-frame `body` churn being removed here.
-    @State private var coupling = ChartCouplingState()
 
     private let chartHeight: CGFloat = 360
 
@@ -132,19 +132,10 @@ struct TimelineView: View {
     /// problem for free: it accepts the proposed width and scrolls its content, rather
     /// than forcing the whole screen as wide as the chart.
     private var chart: some View {
-        ScrollViewReader { scroller in
-            ScrollView(.horizontal) {
-                TimelineCurveChart(points: data.points, range: data.range, markedDay: markedDay)
-                    .overlay(alignment: .leading) { scrollAnchors }
-            }
-            .scrollIndicators(.hidden)
+        chartScroller
             .frame(maxWidth: .infinity)
             .frame(height: chartHeight)
-            .onTimelineHorizontalScroll { offset in
-                updateMarkedDay(chartScrollOffset: offset)
-            }
-            .onAppear { chartScroller = scroller }
-        }
+            .overlay(alignment: .top) { centredDayMarker }
             .overlay(alignment: .topLeading) {
                 // Behind the data, spanning the viewport — see TimelineChartGuides.
                 TimelineChartGuides()
@@ -181,35 +172,95 @@ struct TimelineView: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(chartAccessibilityLabel)
+            // The chart is fixed geometry — 64pt day columns holding a day number in a
+            // 34pt frame — so its labels cannot grow with body text: past this size they
+            // truncate to "…" and the scale labels overrun the plot. Bounding the chart
+            // keeps it legible and keeps `markerHeight` valid, while everything outside
+            // it (the whole injection list) still scales without limit. The chart's
+            // content is also available to VoiceOver via `chartAccessibilityLabel`.
+            .dynamicTypeSize(...DynamicTypeSize.xLarge)
     }
 
-    /// Invisible, evenly spaced scroll targets laid across the chart's width.
-    ///
-    /// `ScrollViewReader` can only scroll *to a view*, so positioning the chart at an
-    /// arbitrary x means having a view at that x to aim at. One target per day would
-    /// snap in 64pt jumps — visibly stepped, and not the continuous pan the mock
-    /// specifies. Anchors every `anchorSpacing` points make `scrollTo` fine-grained
-    /// enough to read as smooth, on every supported iOS version, while the chart stays
-    /// a real `ScrollView` (native momentum, rubber-banding, and VoiceOver scrolling).
-    private var scrollAnchors: some View {
-        HStack(spacing: 0) {
-            ForEach(0..<anchorCount, id: \.self) { index in
-                Color.clear
-                    .frame(width: Self.anchorSpacing, height: 1)
-                    // A dedicated id type, not a bare Int: plain `Int` ids collide with
-                    // any other `ForEach(0..<n)` inside the same scroll view, and
-                    // `scrollTo` would then have two candidates per index.
-                    .id(ChartAnchorID(index: index))
+    /// The scrolling chart itself, in whichever of the two implementations this system
+    /// supports. See `CoupledChartScroller` for why they differ.
+    @ViewBuilder
+    private var chartScroller: some View {
+        if #available(iOS 18.0, *) {
+            CoupledChartScroller(pan: pan, onOffsetChange: updateMarkedDay) {
+                chartContent
+            }
+        } else {
+            LegacyChartScroller(centreOn: data.days.first(where: \.isToday)?.day ?? data.days.last?.day) {
+                chartContent
             }
         }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 
-    private static let anchorSpacing: CGFloat = 8
+    private var chartContent: some View {
+        TimelineCurveChart(
+            points: data.points,
+            range: data.range,
+            days: data.days
+        )
+        // Top-aligned so the day axis lands at a known y. The content is shorter than
+        // `chartHeight`, and a horizontal `ScrollView` centres a short child
+        // vertically — which shifted the axis ~10pt below where `centredDayMarker`
+        // positions itself, leaving the real column's weekday visible under the pill.
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
 
-    private var anchorCount: Int {
-        max(1, Int((chartContentWidth / Self.anchorSpacing).rounded(.up)))
+    /// Names the day under the centre of the viewport — and stays put while the axis
+    /// slides beneath it.
+    ///
+    /// Fixed to the viewport rather than drawn on its day's column inside the scrolling
+    /// content, which is how the reference behaves: across a slow drag the strip moves
+    /// several points per frame while the pill never does. Keeping it out of the
+    /// content also keeps `TimelineCurveChart`'s inputs constant during a pan, so its
+    /// body — and the whole per-day axis — is skipped entirely.
+    ///
+    /// Opaque on purpose: the labels it covers are still rendered underneath it.
+    @ViewBuilder
+    private var centredDayMarker: some View {
+        if let label = centredDayLabel {
+            // The text is set tighter than the plain columns' number-over-weekday
+            // spacing, but the fill around it is sized to cover a whole column
+            // (34pt number + 4pt + weekday) with a little to spare. Both parts matter:
+            // compact text keeps the weekday clear of the capsule's curved end, while
+            // the oversized fill stops the real column's own weekday showing below the
+            // pill — which rendered "Fri" twice.
+            VStack(spacing: 1) {
+                Text(label.dayNumber)
+                    .font(.jakarta(13, weight: .extraBold))
+                Text(label.weekday)
+                    .font(.jakarta(10.5, weight: .bold))
+                    .opacity(0.85)
+            }
+            .foregroundStyle(Color.white)
+            .frame(width: 46, height: Self.markerHeight)
+            .background(Capsule().fill(AppColor.primaryGreen))
+            .padding(.top, TimelineCurve.plotHeight + TimelineCurve.dayAxisTopPadding - Self.markerBleed)
+            .allowsHitTesting(false)
+            // The chart already carries a summary label; this would only add noise.
+            .accessibilityHidden(true)
+        }
+    }
+
+    /// How far the marker's fill bleeds above and below a day column, so it covers the
+    /// column whatever the rendered text metrics turn out to be.
+    private static let markerBleed: CGFloat = 3
+
+    /// Tall enough to cover a full day column: 34pt number frame + 4pt spacing +
+    /// the weekday line, plus `markerBleed` at each end.
+    ///
+    /// The first two terms are fixed frames in `dayColumn`; only the weekday line is a
+    /// text metric, and it is bounded because the chart caps its Dynamic Type at
+    /// `xLarge` (see `chart`). Without that cap this number would be wrong at accessible
+    /// sizes and the column's own weekday would reappear below the marker.
+    private static let markerHeight: CGFloat = 34 + 4 + 14 + markerBleed * 2
+
+    private var centredDayLabel: TimelineDayLabel? {
+        guard let markedDayIndex, data.days.indices.contains(markedDayIndex) else { return nil }
+        return data.days[markedDayIndex]
     }
 
     /// Records the chart's viewport width and, once both it and the data are known,
@@ -229,27 +280,16 @@ struct TimelineView: View {
         guard !hasAnchoredOnToday, chartViewportWidth > 0, data.range.dayCount > 0 else { return }
         hasAnchoredOnToday = true
 
-        let offset = offsetCentringToday(viewportWidth: chartViewportWidth)
-        scrollChart(to: offset)
+        let offset = clampedChartOffset(offsetCentringToday(viewportWidth: chartViewportWidth))
+        pan.target = offset
         // Seed the marker here rather than waiting for a scroll callback: the callback
         // is iOS 18-only, and even there the chart opens without having been dragged.
         updateMarkedDay(chartScrollOffset: offset)
     }
 
-    /// Scrolls the chart so `offset` points of content sit to the left of the viewport.
-    ///
-    /// Anchors are `anchorSpacing` apart, so consecutive scroll callbacks frequently
-    /// resolve to the same one. Skipping those is the point: each `scrollTo` forces a
-    /// layout pass over the chart, and firing one per frame for a target that hasn't
-    /// moved is what the coupling used to do.
-    private func scrollChart(to offset: CGFloat) {
-        guard let chartScroller else { return }
-        let clamped = min(max(offset, 0), max(0, chartContentWidth - chartViewportWidth))
-        let index = min(anchorCount - 1, Int((clamped / Self.anchorSpacing).rounded()))
-
-        guard index != coupling.lastAnchorIndex else { return }
-        coupling.lastAnchorIndex = index
-        chartScroller.scrollTo(ChartAnchorID(index: index), anchor: .leading)
+    /// Keeps a desired offset inside the range the chart can actually occupy.
+    private func clampedChartOffset(_ offset: CGFloat) -> CGFloat {
+        min(max(offset, 0), max(0, chartContentWidth - chartViewportWidth))
     }
 
     /// Total width of the chart's content: one fixed-width column per day.
@@ -264,9 +304,8 @@ struct TimelineView: View {
     /// the callers compute it immediately after assigning that state and cannot rely on
     /// the write being visible yet.
     private func offsetCentringToday(viewportWidth: CGFloat) -> CGFloat {
-        let calendar = Calendar.current
         let days = data.days
-        let todayIndex = days.firstIndex { calendar.isDateInToday($0) } ?? max(0, days.count - 1)
+        let todayIndex = days.firstIndex(where: \.isToday) ?? max(0, days.count - 1)
         let columnCentre = CGFloat(todayIndex) * TimelineCurve.dayWidth + TimelineCurve.dayWidth / 2
         return max(0, columnCentre - viewportWidth / 2)
     }
@@ -349,10 +388,12 @@ struct TimelineView: View {
             maxChartScroll: offsetCentringToday(viewportWidth: chartViewportWidth)
         )
 
-        // Driven straight from the callback rather than through an intermediate
-        // `@State` offset. The state round-trip re-ran `body` on every scroll frame,
-        // and `scrollChart` already drops the calls that change nothing.
-        scrollChart(to: offset)
+        // A plain continuous offset. The previous version quantised this to the nearest
+        // of a grid of invisible 8pt anchor views, because `ScrollViewReader` can only
+        // scroll *to a view* — so between anchors the chart did not move at all and
+        // then jumped 8pt, which is the stepping that showed up as a stutter at slow
+        // scroll speeds.
+        pan.target = clampedChartOffset(offset)
     }
 
     /// Moves the centred-day marker to whichever column now sits under the middle of
@@ -368,12 +409,6 @@ struct TimelineView: View {
     }
 
     // MARK: - Derived data
-
-    /// The day under the centre of the chart's viewport.
-    private var markedDay: Date? {
-        guard let markedDayIndex, data.days.indices.contains(markedDayIndex) else { return nil }
-        return data.days[markedDayIndex]
-    }
 
     /// Recomputes everything derived from the injection history.
     ///
@@ -406,7 +441,7 @@ struct TimelineView: View {
 
         data = TimelineData(
             range: range,
-            days: range.days(calendar: calendar),
+            days: TimelineCurve.dayLabels(for: range, calendar: calendar),
             points: TimelineCurve.sample(
                 injections: injections,
                 model: viewModel.model,
@@ -441,17 +476,98 @@ private struct DayGroup {
 /// on where the user has scrolled to.
 private struct TimelineData {
     var range = TimelineRange(start: .distantPast, dayCount: 0)
-    var days: [Date] = []
+    var days: [TimelineDayLabel] = []
     var points: [TimelineCurvePoint] = []
     var groups: [DayGroup] = []
     var injectionCount = 0
 }
 
-/// Mutable bookkeeping for the chart/list coupling. A class so the scroll handlers can
-/// update it without invalidating the view — see `TimelineView.coupling`.
-private final class ChartCouplingState {
-    /// The anchor the chart was last scrolled to, or -1 before the first scroll.
-    var lastAnchorIndex = -1
+/// Where the chart should sit horizontally, as a plain content offset in points.
+///
+/// An `ObservableObject` so exactly one view — the chart's scroller — subscribes to
+/// it. The list writes to it on every scroll callback; routing that through the
+/// enclosing view's `@State` instead would re-run `TimelineView.body`, and with it the
+/// whole injection list, sixty times a second.
+private final class ChartPan: ObservableObject {
+    @Published var target: CGFloat = 0
+}
+
+/// The chart's scroller on iOS 18 and later.
+///
+/// `ScrollPosition.scrollTo(x:)` takes an exact offset, which is the whole point: the
+/// previous implementation could only scroll *to a view*, so it carpeted the chart with
+/// one invisible anchor view per 8pt and snapped to the nearest. That cost a view per
+/// 8pt of a chart that is 64pt per day — over a thousand of them across a few months of
+/// history, rebuilt on every marker change — and it quantised the pan into 8pt hops.
+@available(iOS 18.0, *)
+private struct CoupledChartScroller<Content: View>: View {
+    @ObservedObject var pan: ChartPan
+    /// Reports the chart's real offset back, so the centred-day marker keeps up with a
+    /// hand-drag as well as with the list.
+    let onOffsetChange: (CGFloat) -> Void
+    @ViewBuilder var content: Content
+
+    @State private var position = ScrollPosition()
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            content
+        }
+        .scrollIndicators(.hidden)
+        .scrollPosition($position)
+        .onChange(of: pan.target) { _, target in
+            position.scrollTo(x: target)
+        }
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.x
+        } action: { _, offset in
+            onOffsetChange(offset)
+        }
+    }
+}
+
+/// The chart's scroller before iOS 18, where `ScrollPosition` does not exist.
+///
+/// Hand-dragging works; the list coupling does not, because the scroll reporting it
+/// needs (`onScrollGeometryChange`) is itself iOS 18-only and the geometry-preference
+/// fallback it replaced never fired in practice. That is the behaviour this system
+/// already had. Opening centred on today still works, via the day ids the axis
+/// publishes — day granularity is all an initial position needs.
+private struct LegacyChartScroller<Content: View>: View {
+    let centreOn: Date?
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                content
+            }
+            .scrollIndicators(.hidden)
+            .onAppear {
+                guard let centreOn else { return }
+                // Deferred: at `onAppear` the content has not been laid out, so there is
+                // nothing yet to scroll to.
+                DispatchQueue.main.async {
+                    proxy.scrollTo(centreOn, anchor: .center)
+                }
+            }
+        }
+    }
+}
+
+#Preview("Timeline with history") {
+    let viewModel = FactorTrackerViewModel(settings: .defaultSettings)
+    // A few weeks of doses, so the chart is wider than the viewport and the day strip
+    // has something to slide under the centred-day marker.
+    for daysAgo in stride(from: 21, through: 0, by: -3) {
+        viewModel.addInjection(
+            doseIU: 3000,
+            at: Date().addingTimeInterval(-Double(daysAgo) * 86_400),
+            lot: "4363501B",
+            productName: "Elocta"
+        )
+    }
+    return TimelineView(viewModel: viewModel, onClose: {})
 }
 
 /// Carries the list's scroll position up to the chart.
@@ -463,12 +579,6 @@ struct TimelineScrollMetrics: Equatable {
     var offset: CGFloat = 0
     var contentHeight: CGFloat = 0
     var viewportHeight: CGFloat = 0
-}
-
-/// Identifies the chart's invisible scroll anchors. A distinct type so these can never
-/// be confused with any other identified view inside the same scroll view.
-private struct ChartAnchorID: Hashable {
-    let index: Int
 }
 
 private struct TimelineScrollOffsetKey: PreferenceKey {
@@ -505,25 +615,6 @@ extension View {
             self.onPreferenceChange(TimelineScrollOffsetKey.self) { metrics in
                 action(metrics)
             }
-        }
-    }
-
-    /// Reports a horizontal scroll view's content offset as it scrolls.
-    ///
-    /// Used to keep the centred-day marker in step when the chart is dragged by hand.
-    /// There is no pre-iOS-18 fallback: on older systems the marker simply follows the
-    /// list rather than the chart's own drag, which degrades one detail instead of
-    /// pulling a second unreliable geometry-preference path into the view.
-    @ViewBuilder
-    func onTimelineHorizontalScroll(_ action: @escaping (CGFloat) -> Void) -> some View {
-        if #available(iOS 18.0, *) {
-            self.onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentOffset.x
-            } action: { _, offset in
-                action(offset)
-            }
-        } else {
-            self
         }
     }
 }

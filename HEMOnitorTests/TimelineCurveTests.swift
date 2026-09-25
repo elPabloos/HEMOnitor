@@ -186,4 +186,67 @@ struct TimelineCurveTests {
         let high = TimelineCurve.y(forPercent: 100, height: 266, topInset: 14, bottomInset: 14)
         #expect(high < low)
     }
+
+    // MARK: - Day labels
+    //
+    // These are precomputed so the chart does no date formatting while scrolling. The
+    // values are what the axis renders, so they are worth pinning down — but only the
+    // properties that matter, not every string for every locale.
+
+    @Test func oneLabelPerDayColumnInOrder() {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: now)
+        let labels = TimelineCurve.dayLabels(for: TimelineRange(start: start, dayCount: 5), calendar: calendar)
+
+        #expect(labels.count == 5)
+        #expect(labels.map(\.day) == TimelineRange(start: start, dayCount: 5).days(calendar: calendar))
+    }
+
+    @Test func exactlyOneColumnIsMarkedToday() {
+        let calendar = Calendar.current
+        // A window starting two days ago necessarily contains today.
+        let start = calendar.date(byAdding: .day, value: -2, to: calendar.startOfDay(for: Date()))!
+        let labels = TimelineCurve.dayLabels(for: TimelineRange(start: start, dayCount: 5), calendar: calendar)
+
+        #expect(labels.filter(\.isToday).count == 1)
+        #expect(labels[2].isToday)
+    }
+
+    @Test func noColumnIsMarkedTodayInAPurelyHistoricWindow() {
+        let calendar = Calendar.current
+        let start = calendar.date(byAdding: .day, value: -400, to: calendar.startOfDay(for: Date()))!
+        let labels = TimelineCurve.dayLabels(for: TimelineRange(start: start, dayCount: 7), calendar: calendar)
+
+        #expect(labels.allSatisfy { !$0.isToday })
+    }
+
+    /// Day numbers must keep counting across a month boundary rather than restarting —
+    /// the axis showed ... 30, 31, 1, 2 ... incorrectly once before.
+    @Test func dayNumbersRunAcrossAMonthBoundary() {
+        let calendar = Calendar.current
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 1
+        components.day = 30
+        let start = calendar.startOfDay(for: calendar.date(from: components)!)
+
+        let labels = TimelineCurve.dayLabels(for: TimelineRange(start: start, dayCount: 4), calendar: calendar)
+        let numbers = labels.map(\.dayNumber)
+
+        #expect(numbers.count == 4)
+        #expect(numbers[0] != numbers[2])
+        // The 30th and 31st of January, then the 1st and 2nd of February.
+        #expect(calendar.component(.day, from: labels[0].day) == 30)
+        #expect(calendar.component(.day, from: labels[3].day) == 2)
+    }
+
+    @Test func everyLabelCarriesAWeekdayAndADayNumber() {
+        let calendar = Calendar.current
+        let labels = TimelineCurve.dayLabels(
+            for: TimelineRange(start: calendar.startOfDay(for: now), dayCount: 7),
+            calendar: calendar
+        )
+
+        #expect(labels.allSatisfy { !$0.dayNumber.isEmpty && !$0.weekday.isEmpty })
+    }
 }
