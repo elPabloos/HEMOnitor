@@ -114,7 +114,7 @@ struct CoverWindowCard: View {
                 }
             }
         }
-        .glassCard()
+        .glassCard(cornerRadius: HomeRadius.cardLarge)
     }
 
     private var headline: some View {

@@ -9,79 +9,122 @@ import SwiftUI
 /// the card's own on-screen height stays capped regardless of history length
 /// (this doubles as the "view full history" affordance — every entry is here,
 /// just inside a fixed-height scroller).
+///
+/// The title sits outside the card, matching the design mock; row content and
+/// its fonts are copied from `TimelineInjectionRow` (product name, dose, date/
+/// time, lot), stacked in a single glass card with a hairline separator
+/// between rows rather than the Timeline's separate tinted cards.
 struct RecentActivityCard: View {
     let injections: [InjectionEvent]
     let model: FactorVIIIModel
+    /// Used when an event predates product tracking, so old rows show the
+    /// patient's current product rather than nothing.
+    let fallbackProductName: String
+    /// Tapping a row hands the injection back so the owner can present
+    /// `EditInjectionSheet` — the same editor the Timeline list opens.
+    let onSelect: (InjectionEvent) -> Void
 
     private var recentFirst: [InjectionEvent] { injections.reversed() }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.stackGap) {
-            Text("Recent activity")
-                .font(AppTextStyle.headline)
-                .foregroundStyle(AppColor.ink)
-
-            if injections.isEmpty {
-                Text("No injections recorded yet.")
-                    .font(AppTextStyle.body)
+        VStack(alignment: .leading, spacing: Theme.Spacing.stackGapSmall) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Recent activity")
+                    .font(.jakarta(13, weight: .bold))
                     .foregroundStyle(AppColor.inkSecondary)
-                    .padding(.vertical, 12)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: Theme.Spacing.stackGapSmall) {
-                        ForEach(recentFirst) { injection in
-                            row(for: injection)
+                Spacer()
+                Text(countText)
+                    .font(.plexMono(11.5, weight: .bold))
+                    .foregroundStyle(AppColor.inkSecondary)
+            }
+            .padding(.horizontal, 2)
+
+            Group {
+                if injections.isEmpty {
+                    Text("No injections recorded yet.")
+                        .font(AppTextStyle.body)
+                        .foregroundStyle(AppColor.inkSecondary)
+                        .padding(.vertical, 12)
+                } else {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(Array(recentFirst.enumerated()), id: \.element.id) { index, injection in
+                                row(for: injection)
+                                if index < recentFirst.count - 1 {
+                                    Rectangle()
+                                        .fill(AppColor.ink.opacity(0.06))
+                                        .frame(height: 1)
+                                }
+                            }
                         }
                     }
+                    .frame(maxHeight: 260)
                 }
-                .frame(maxHeight: 260)
             }
+            .glassCard(cornerRadius: HomeRadius.cardLarge)
         }
-        .glassCard()
     }
 
+    private var countText: String {
+        injections.isEmpty ? "none yet" : "\(injections.count) logged"
+    }
+
+    /// The whole row is a button opening the injection editor, with a trailing
+    /// chevron so the affordance is visible — same contract as
+    /// `TimelineInjectionRow`.
     private func row(for injection: InjectionEvent) -> some View {
-        HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(AppColor.primaryGreen.opacity(0.12))
-                .frame(width: 36, height: 36)
-                .overlay {
-                    Text(badgeCode(for: injection.doseIU))
-                        .font(.plexMono(10, weight: .bold))
+        Button {
+            onSelect(injection)
+        } label: {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(injection.productName ?? fallbackProductName)
+                        .font(.jakarta(14.5, weight: .extraBold))
+                        .foregroundStyle(AppColor.ink)
+
+                    Text("\(injection.doseIU.wholeNumberText) IU")
+                        .font(.jakarta(13.5, weight: .bold))
                         .foregroundStyle(AppColor.primaryGreen)
+
+                    Text(formattedDateTime(injection.date))
+                        .font(AppTextStyle.caption)
+                        .foregroundStyle(AppColor.inkSecondary)
+
+                    if let lot = injection.lot {
+                        Text("Lot \(lot)")
+                            .font(AppTextStyle.caption)
+                            .foregroundStyle(AppColor.inkSecondary)
+                    }
                 }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(injection.doseIU.wholeNumberText) IU")
-                    .font(AppTextStyle.bodyEmphasis)
-                    .foregroundStyle(AppColor.ink)
-                Text(relativeText(for: injection.date))
-                    .font(AppTextStyle.caption)
+                Spacer(minLength: Theme.Spacing.stackGapSmall)
+
+                Text("\(model.displayLevel(fromRealPercent: injection.peakRealPercent).wholeNumberText)%")
+                    .font(AppTextStyle.monoValue)
                     .foregroundStyle(AppColor.inkSecondary)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(AppColor.ink.opacity(0.4))
             }
-
-            Spacer()
-
-            Text("\(model.displayLevel(fromRealPercent: injection.peakRealPercent).wholeNumberText)%")
-                .font(AppTextStyle.monoValue)
-                .foregroundStyle(AppColor.inkSecondary)
+            .padding(.vertical, 14)
+            .padding(.horizontal, 4)
+            // Without this only the text is tappable; the gaps between the
+            // columns would fall through the row.
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 4)
+        .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens the editor for this injection")
+        .accessibilityAddTraits(.isButton)
     }
 
-    private func badgeCode(for doseIU: Double) -> String {
-        if doseIU >= 1000 {
-            return String(format: "%.1fK", doseIU / 1000)
-        }
-        return String(Int(doseIU))
-    }
-
-    private func relativeText(for date: Date) -> String {
-        let hours = Date().timeIntervalSince(date) / 3600
-        if hours < 1 { return "\(max(0, Int(hours * 60)))min ago" }
-        if hours < 48 { return String(format: "%.1fh ago", hours) }
-        return String(format: "%.1fd ago", hours / 24)
+    /// e.g. "Monday, Sept 21, 18:23".
+    private func formattedDateTime(_ date: Date) -> String {
+        let weekday = date.formatted(.dateTime.weekday(.wide))
+        let monthDay = date.formatted(.dateTime.month(.abbreviated).day())
+        let time = date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits))
+        return "\(weekday), \(monthDay), \(time)"
     }
 }
 
@@ -89,10 +132,12 @@ struct RecentActivityCard: View {
     let model = FactorVIIIModel(weightKg: 65, baselinePercent: 2, halfLifeHours: 19)
     return RecentActivityCard(
         injections: [
-            InjectionEvent(id: UUID(), date: Date().addingTimeInterval(-3600 * 5), doseIU: 2000, realLevelBefore: 4, peakRealPercent: 65),
+            InjectionEvent(id: UUID(), date: Date().addingTimeInterval(-3600 * 5), doseIU: 2000, realLevelBefore: 4, peakRealPercent: 65, lot: "4363501B", productName: "Elocta"),
             InjectionEvent(id: UUID(), date: Date().addingTimeInterval(-3600 * 30), doseIU: 3000, realLevelBefore: 8, peakRealPercent: 70)
         ],
-        model: model
+        model: model,
+        fallbackProductName: "Elocta",
+        onSelect: { _ in }
     )
     .padding()
     .background(AppColor.backgroundGradient)

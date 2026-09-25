@@ -18,10 +18,15 @@ struct TimelineCurveChart: View {
     let points: [TimelineCurvePoint]
     let range: TimelineRange
 
-    /// The day currently centred in the viewport, which carries the filled marker.
-    /// The marker follows the scroll rather than being pinned to today, so it always
-    /// names the day you are looking at.
-    var markedDay: Date?
+    /// The axis labels, resolved once per history change rather than formatted here.
+    /// See `TimelineDayLabel` for why.
+    let days: [TimelineDayLabel]
+
+    // Note there is deliberately nothing here that varies as the chart is panned. The
+    // centred-day marker is drawn by `TimelineView` as a fixed overlay on the viewport,
+    // not by this view — so while the user scrolls, every input below is unchanged,
+    // SwiftUI's diffing skips this body wholesale, and the per-day `dayAxis` is not
+    // rebuilt. Adding a pan-varying property here would silently undo that.
 
     /// Height of the plot area, above the day axis. Shared with `TimelineChartGuides`
     /// so the two line up exactly.
@@ -117,16 +122,17 @@ struct TimelineCurveChart: View {
 
     private var dayAxis: some View {
         HStack(spacing: 0) {
-            ForEach(range.days(), id: \.self) { day in
-                dayColumn(day)
+            ForEach(days) { label in
+                dayColumn(label)
                     .frame(width: TimelineCurve.dayWidth)
-                    // Scroll target: the list below scrolls the chart to a given day
-                    // via `ScrollViewReader.scrollTo(day)`.
-                    .id(day)
+                    // Scroll target: `LegacyChartScroller` centres the chart on opening
+                    // by scrolling to a day's id, which is all it needs before iOS 18
+                    // gives it exact offsets.
+                    .id(label.day)
             }
         }
-        .padding(.top, 10)
-        .padding(.bottom, 12)
+        .padding(.top, TimelineCurve.dayAxisTopPadding)
+        .padding(.bottom, TimelineCurve.dayAxisBottomPadding)
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(AppColor.ink.opacity(0.07))
@@ -134,32 +140,20 @@ struct TimelineCurveChart: View {
         }
     }
 
-    private func dayColumn(_ day: Date) -> some View {
-        let calendar = Calendar.current
-        let isMarked = markedDay.map { calendar.isDate(day, inSameDayAs: $0) } ?? false
-        let isToday = calendar.isDateInToday(day)
-
-        return VStack(spacing: 4) {
-            Text(day.formatted(.dateTime.day()))
-                .font(.jakarta(13, weight: .extraBold))
-                .foregroundStyle(isMarked ? Color.white : AppColor.ink)
-                .frame(width: 34, height: 34)
-                .background {
-                    Circle().fill(isMarked ? AppColor.primaryGreen : Color.clear)
+    /// One day's number. Nothing here depends on where the chart is scrolled to — the
+    /// centred day is marked by a fixed overlay that these numbers slide beneath.
+    private func dayColumn(_ label: TimelineDayLabel) -> some View {
+        Text(label.dayNumber)
+            .font(.jakarta(13, weight: .extraBold))
+            .foregroundStyle(AppColor.ink)
+            .frame(width: TimelineCurve.dayNumberSize, height: TimelineCurve.dayNumberSize)
+            .overlay {
+                // Today keeps a quiet ring, so the present stays findable while
+                // scrolling through history.
+                if label.isToday {
+                    Circle().strokeBorder(AppColor.primaryGreen.opacity(0.5), lineWidth: 1.5)
                 }
-                .overlay {
-                    // Today keeps a quiet ring when it isn't the centred day, so the
-                    // present stays findable while scrolling through history.
-                    if isToday && !isMarked {
-                        Circle().strokeBorder(AppColor.primaryGreen.opacity(0.5), lineWidth: 1.5)
-                            .frame(width: 34, height: 34)
-                    }
-                }
-
-            Text(day.formatted(.dateTime.weekday(.abbreviated)))
-                .font(.jakarta(10.5, weight: .bold))
-                .foregroundStyle(AppColor.ink.opacity(0.72))
-        }
+            }
     }
 
     // MARK: - Geometry
@@ -307,7 +301,8 @@ struct TimelineScaleLabels: View {
     return ScrollView(.horizontal) {
         TimelineCurveChart(
             points: TimelineCurve.sample(injections: [], model: model, range: range),
-            range: range
+            range: range,
+            days: TimelineCurve.dayLabels(for: range, calendar: calendar)
         )
     }
     .background(AppColor.glassFillStrong)

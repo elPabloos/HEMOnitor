@@ -30,7 +30,26 @@ struct HomeView: View {
     /// Stock tab).
     var onAddDelivery: () -> Void = {}
 
-    @State private var showingCalibration = false
+    /// Which sheet Home is presenting, if any.
+    ///
+    /// One enum-backed `.sheet` rather than a boolean per sheet: two `sheet`
+    /// modifiers on the same view don't reliably coexist, and this mirrors how
+    /// `AppShellView` presents its own sheets.
+    @State private var presentedSheet: HomeSheet?
+
+    /// Home's sheets. `editInjection` carries the event so the editor is built
+    /// from it — the same `EditInjectionSheet` the Timeline list opens.
+    private enum HomeSheet: Identifiable {
+        case calibration
+        case editInjection(InjectionEvent)
+
+        var id: String {
+            switch self {
+            case .calibration: "calibration"
+            case .editInjection(let injection): injection.id.uuidString
+            }
+        }
+    }
 
     /// The "Look ahead" slider on the cover-window card, forward-only (0...72h).
     @State private var lookAheadHours: Double = 0
@@ -51,7 +70,7 @@ struct HomeView: View {
             VStack(spacing: Theme.Spacing.stackGapLarge) {
                 HomeHeaderView(
                     isCalibrated: viewModel.model.calibrationFactor != nil,
-                    onCalibrate: { showingCalibration = true }
+                    onCalibrate: { presentedSheet = .calibration }
                 )
 
                 VStack(spacing: Theme.Spacing.stackGap) {
@@ -93,7 +112,12 @@ struct HomeView: View {
                     )
                 }
 
-                RecentActivityCard(injections: viewModel.injections, model: viewModel.model)
+                RecentActivityCard(
+                    injections: viewModel.injections,
+                    model: viewModel.model,
+                    fallbackProductName: viewModel.productName,
+                    onSelect: { presentedSheet = .editInjection($0) }
+                )
 
                 resetButton
 
@@ -110,8 +134,17 @@ struct HomeView: View {
         .onReceive(timer) { date in
             viewModel.recalculateLevels(at: date)
         }
-        .sheet(isPresented: $showingCalibration) {
-            CalibrationView(viewModel: viewModel)
+        .sheet(item: $presentedSheet) { sheet in
+            switch sheet {
+            case .calibration:
+                CalibrationView(viewModel: viewModel)
+            case .editInjection(let injection):
+                EditInjectionSheet(
+                    viewModel: viewModel,
+                    injection: injection,
+                    onClose: { presentedSheet = nil }
+                )
+            }
         }
     }
 
